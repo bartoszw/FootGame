@@ -26,6 +26,20 @@ dependencies:
 - hashmap >= 1.3.3
 - array
 - Spock >= 0.14
+- Spock-core >= 0.14
+- time
+- text
+- random
+- wai-extra >= 3.1
+- aeson >= 2.0
+- hashable
+
+default-extensions:
+- DeriveGeneric
+- DeriveAnyClass
+- OverloadedStrings
+- FlexibleContexts
+- GADTs
 
 library:
   source-dirs: src

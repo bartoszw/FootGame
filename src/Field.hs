@@ -9,17 +9,28 @@ For more information on how to write Haddock comments check the user guide:
 module Field
     ( Location
     , Section
+    , Player
+    , Move
     , Grid
     , Game (..)
+    , MyError (..)
     , initField
     , initFieldWithFrames
     , initGame
+    , initGoals
+    , isPosEndOfMove
+    , validateMove
     ) where
 
+import           GHC.Generics
 import qualified Data.HashMap as HM
 import qualified Data.Array as A
+import           Data.Hashable
+import           Data.Aeson
+import           Data.Aeson.Types
+--import qualified Data.Text.Array as A
 
-type Location = (Int,Int)
+type Location = (Int,Int) 
 -- | Section is not a vector! I.e. (a,b) :: Section === (b,a) :: Section
 type Section = (Location,Location)
 type Grid = HM.Map Section ()
@@ -29,14 +40,50 @@ type FieldWidth = Int
 type FieldLength = Int
 type Move = [Section]
 data Player = Player1 | Player2
-    deriving (Show, Eq, Ord, A.Ix)
+    deriving (Show, Eq, Ord, A.Ix, Generic, ToJSON, FromJSON)
+
+playerSwap :: Player -> Player
+playerSwap Player1 = Player2    
+playerSwap Player2 = Player1
+
+data MyError = IncorrectSection String    
+            | BusySection String 
+            | WrongID String
+            deriving (Eq, Show)
+
+{-instance (A.Ix ix, ToJSON ix, ToJSON val) => ToJSON (A.Array ix val) where
+  toJSON a = object ["Array" .= toJSON (A.assocs a)]
+
+instance (A.Ix ix, ToJSON ix, ToJSON val) => FromJSON (A.Array ix val) where
+    parseJSON = withObject “Occupation” $ \o -> do
+       title_ <- o .: “title”
+       tenure_ <- o .: “tenure”
+       salary_ <- o .: “salary”
+       return $ Occupation title_ tenure_ salary_ -}
+
 -- | Goals represent all possible results of the game, i.e. for reaching certain location. All locations without rewards = 0.
 --   Reward is always from Player1 point of view. Player2 has reward opposite to Player2. 
 type Goals = A.Array (Location          -- ^ Where the reward is obtained
                      ,Player)           -- ^ Who has to reach location for the reward
                      Int                -- ^ Value of reward
+    
+instance (A.Ix ix, ToJSON ix, ToJSON v) => ToJSON (A.Array ix v) where
+    toJSON = toJSON . A.assocs
+instance (A.Ix ix, FromJSON ix, FromJSON v) => FromJSON (A.Array ix v) where
+    parseJSON xs = do
+                    ls <- parseJSON xs
+                    let m = minimum $ map fst ls
+                    let n = maximum $ map fst ls
+                    return $ A.array (m,n) ls
 
--- | Word represents whole information needed to draw current state of the game
+instance (ToJSON k, ToJSON v) => ToJSON (HM.Map k v) where
+    toJSON = toJSON . HM.toList
+instance (Hashable k, Ord k, FromJSON k, FromJSON v) => FromJSON (HM.Map k v) where
+    parseJSON xs = parseJSON xs >>= return . HM.fromList
+
+
+
+-- | Game represents whole information needed to play / perform next move
 data Game = Game {
                 sizeOfGame :: Int,
                 grid :: Grid,
@@ -44,8 +91,8 @@ data Game = Game {
                 newPosition :: Location,
                 currentPlayer :: Player,
                 goals :: Goals,
-                result :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
-}
+                gameResult :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
+                } deriving (Eq, Generic, ToJSON, FromJSON)
 
 initGame :: Int -> Game
 initGame s = Game {
@@ -55,8 +102,8 @@ initGame s = Game {
                 newPosition = (0,0),
                 currentPlayer = Player1,
                 goals = initGoals s,
-                result = 0
-} 
+                gameResult = 0
+                } 
 
 initField :: FieldLength -> FieldWidth -> Grid
 initField len wid = buildField limits l w
@@ -127,21 +174,33 @@ initGoals size = A.array (((-s,-s-1),Player1), ((s,s+1),Player2))
                       ]
     where s = size `div` 2         
             
-validateMove :: Game -> Move -> Either String Game            
-validateMove w m = foldl validateSection (Right w) m
+validateMove :: Game -> Move -> Either MyError Game            
+validateMove g = foldl validateSection (Right g)
     where
-        validateSection :: Either String Game -> Section -> Either String Game
+        validateSection :: Either MyError Game -> Section -> Either MyError Game
         validateSection (Left e) _ = Left e
-        validateSection (Right w) s@(from,to) | result w /= 0 =
-                                                        Right w 
-                                              | from /= currentPosition w = 
-                                                        Left ("Incorrect section " ++ show s ++ 
-                                                              " at current position" ++ show (currentPosition w))
-                                              | HM.lookup s (grid w) == Nothing  = 
-                                                        Left ("Section already busy " ++ show s)
+        validateSection (Right g) s@(from,to) | gameResult g /= 0 =
+                                                        Right g 
+                                              | from /= currentPosition g = 
+                                                        Left $ IncorrectSection ("Incorrect section " ++ show s ++ 
+                                                              " at current position" ++ show (currentPosition g))
+                                              | HM.lookup s (grid g) == Nothing  = 
+                                                        Left $ BusySection ("Section already busy " ++ show s)
                                               | otherwise =
-                                                        Right w {grid = HM.delete s (grid w)
+                                                        Right g {grid = HM.delete s (grid g)
                                                                 ,currentPosition = to
+                                                                ,currentPlayer = newPlayer to
                                                                 ,newPosition = to
-                                                                ,result = goals w A.! (to,currentPlayer w)}
+                                                                ,gameResult = goals g A.! (to,currentPlayer g)}
+        newPlayer to | isPosEndOfMove to g = playerSwap $ currentPlayer g
+                     | otherwise           = currentPlayer g
                                                                                   
+nextPlayer :: Game -> Game
+nextPlayer g = g {currentPlayer = playerSwap $ currentPlayer g}
+
+allSections :: Location -> [Section]
+allSections (x,y) = [((a,b),(x,y)) | a <- [x-1..x], b <- [y-1..y+1], a /= x || b == y-1]
+                 ++ [((x,y),(a,b)) | a <- [x..x+1], b <- [y-1..y+1], a /= x || b == y+1]
+
+isPosEndOfMove :: Location -> Game -> Bool
+isPosEndOfMove p gm = length (filter (`HM.member` grid gm) (allSections p)) == 8
