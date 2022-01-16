@@ -31,8 +31,12 @@ dependencies:
 - text
 - random
 - wai-extra >= 3.1
-- aeson >= 2.0
+- aeson
 - hashable
+- monomer
+- lens
+- wreq
+- bytestring
 
 default-extensions:
 - DeriveGeneric
@@ -54,6 +58,16 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - FootGame
+  FootPlayer:
+    main:                Main.hs
+    source-dirs:         app/app2
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - FootGame
+    - http-client
 
 tests:
   FootGame-test:

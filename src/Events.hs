@@ -18,16 +18,18 @@ import Graphics.Gloss.Interface.IO.Interact
 
 handleEvent :: Event -> World -> World 
 handleEvent (EventMotion (x,y)) w = w {monitor = show x' ++ "," ++ show y' ++ ":" ++ show curP
-                                      ,game = (game w) {newPosition = newP}
-                                      }
+                                      ,currentRound = (currentRound w) {
+                                                        currentGame = (currentGame $ currentRound w) {newPosition = newP}
+                                                        }
+                                        }
     where
         x' = round $ x / factor w
         y' = round $ y / factor w
-        curP = currentPosition $ game w
-        g = grid $ game w
+        curP = currentPosition $ currentGame $ currentRound w
+        g = grid $ currentGame $ currentRound w
         newP | HM.member ((x',y'),curP) g ||
                HM.member (curP,(x',y')) g = (x',y')
-             | otherwise             = currentPosition $ game w
+             | otherwise             = currentPosition $ currentGame $ currentRound w
                
 
 handleEvent _ w = w

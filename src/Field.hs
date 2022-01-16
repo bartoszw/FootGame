@@ -13,11 +13,14 @@ module Field
     , Move
     , Grid
     , Game (..)
+    , RoundType (..)
+    , Round (..)
     , MyError (..)
     , initField
     , initFieldWithFrames
     , initGame
     , initGoals
+    , initRound'
     , isPosEndOfMove
     , validateMove
     ) where
@@ -50,6 +53,9 @@ data MyError = IncorrectSection String
             | BusySection String 
             | WrongID String
             deriving (Eq, Show)
+
+theSize :: Int
+theSize = 8            
 
 {-instance (A.Ix ix, ToJSON ix, ToJSON val) => ToJSON (A.Array ix val) where
   toJSON a = object ["Array" .= toJSON (A.assocs a)]
@@ -92,8 +98,59 @@ data Game = Game {
                 currentPlayer :: Player,
                 goals :: Goals,
                 gameResult :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
-                } deriving (Eq, Generic, ToJSON, FromJSON)
+                } deriving (Eq, Show, Generic, ToJSON, FromJSON)
 
+data Round = Round {
+               -- | State of the current game
+               currentGame :: Game,
+               -- | First player's name
+               player1 :: Maybe String,
+               -- | 2nd player's name
+               player2 :: Maybe String,
+               -- | Current result of series of games - i.e. the round
+               result :: (Int,Int),
+               -- | # of the current game needed in case game is planed for fix number of games
+               numberOfCurrentGame :: Int,
+               -- | Different rounds' types can be imagined, like best of N, N games, ...
+               roundType :: RoundType,
+               -- | The common ID for both players
+               roundID :: Integer
+                } deriving (Eq, Show, Generic, ToJSON, FromJSON)
+
+data RoundType =  NGames Int
+                | BestOfN Int
+                deriving (Eq, Generic, ToJSON, FromJSON)
+
+instance Show RoundType where
+    show (NGames 1) = "1 game"
+    show (NGames n) = show n ++ " games"
+    show (BestOfN n) = show "Best of " ++ show n
+
+
+-- | New game initalization
+initRound' :: String         -- ^ 1st player's name
+            -> RoundType    -- ^ Type of game
+            -> Round
+initRound' name t = Round {
+                        currentGame = initGame theSize,
+                        player1 = Just name,
+                        player2 = Nothing,
+                        result = (0,0),
+                        numberOfCurrentGame = 0,
+                        roundType = t,
+                        roundID = 0
+                        }
+
+endOfRound :: Round -> Bool
+endOfRound r = case roundType r of  
+                NGames n  -> n == one + two 
+                BestOfN n -> round ((fromIntegral n+1) / 2) == max one two
+    where
+        (one,two) = result r
+
+roundSize :: RoundType -> Int
+roundSize (NGames n) = n
+roundSize (BestOfN n) = n
 initGame :: Int -> Game
 initGame s = Game {
                 sizeOfGame = s,

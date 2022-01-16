@@ -18,9 +18,10 @@ import           Web.Spock
 import           Web.Spock.Action
 import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import           Data.Aeson hiding (json)
+import           Data.Text (pack)
 import           Data.IORef ( IORef, readIORef, writeIORef )
 import           Control.Monad.IO.Class ( MonadIO(..) )
-import System.Random ( uniformR )
+import           System.Random ( uniformR )
 import           Management
 
 -- | Session is empty as we connect to right Round via RoundID
@@ -65,23 +66,36 @@ app =
           redirect "hello"       
           -}
 
--- | Route Home requirest parameter Round and provides with data of this round
+-- | Route Home requires parameter Round and provides with data of this round
 getHome :: ActionCtxT () (WebStateM () MySession MyAppState) b
 getHome =  do
-            round <- param "round"
-            case round of
-              (Just r) -> getUniverse r 
-              _        -> text "please provide with round id"
+            iround <- param "round"
+            case iround of
+              (Just ir) -> getRound ir 
+              _         -> getListOfActiveRounds
 
-getUniverse :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
+getRound :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
  SpockState (ActionCtxT ctx m) ~ MyAppState) =>
  Integer -> ActionCtxT ctx m b
-getUniverse r = do
+getRound r = do
                  (AppState ref) <- getState 
                  u <- liftIO $ readIORef ref
                  case HM.lookup r (roundsMap u) of          
-                     Nothing -> text "incorrect game ID. Impossible to identify the game on server side."
                      Just ro -> json ro
+                     Nothing -> case HM.lookup r (roundToCont u) of 
+                                  Just r2 -> json r2
+                                  _       -> text ("incorrect game ID (" 
+                                                  <> pack (show r) 
+                                                  <> "). Impossible to identify the game on server side.")
+                    
+getListOfActiveRounds :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
+ SpockState (ActionCtxT ctx m) ~ MyAppState) =>
+ ActionCtxT ctx m b
+getListOfActiveRounds = do
+                 (AppState ref) <- getState 
+                 u <- liftIO $ readIORef ref
+                 json $ (HM.keys (roundsMap u) , HM.keys (roundToCont u))
+
 
 postJoin :: ActionCtxT ctx (WebStateM () MySession MyAppState) a
 postJoin = do

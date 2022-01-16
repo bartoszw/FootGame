@@ -16,19 +16,20 @@ module Draw
 import qualified Data.HashMap as HM
 import Graphics.Gloss
 import Field
+import Management (initRound')
 
 data World = World {
-             game :: Game,
+             currentRound :: Round,
              width :: Int, 
              height :: Int, 
              offset :: Int,
              factor :: Float,
              monitor :: String
-}
+} deriving Show
 
 initWorld :: Int -> World
 initWorld s = World {
-            game = initGame s,
+            currentRound = initRound' "" (NGames 1),
             width = 400,
             height = 400,
             offset = 100,
@@ -56,8 +57,8 @@ drawSection factor s@((x,y),(x',y')) = Line [(nx,ny),(nx',ny')]
 drawGrid :: World -> [Picture]
 drawGrid w = map (sectionColor . drawSection (factor w) . fst) (HM.toList $ HM.difference (initFieldWithFrames s s) g)
     where 
-        g = grid $ game w
-        s = sizeOfGame $ game w
+        g = grid $ currentGame $ currentRound w
+        s = sizeOfGame $ currentGame $ currentRound w
 
 sectionColor :: Picture -> Picture
 sectionColor = color white
@@ -66,7 +67,7 @@ drawCurrentPosition :: World -> [Picture]
 drawCurrentPosition w = map (color yellow)  [circle (0.15 * f), circle 1]
     where
         f = factor w
-        (x,y) = currentPosition $ game w
+        (x,y) = currentPosition $ currentGame $ currentRound w
 
 drawNewPosition :: World -> [Picture]
 drawNewPosition w = map (color yellow) [translate (f*fromIntegral x) (f*fromIntegral y) $ circle (0.2 *f)
@@ -74,8 +75,8 @@ drawNewPosition w = map (color yellow) [translate (f*fromIntegral x) (f*fromInte
                                        ] 
     where
         f = factor w
-        (x,y) = newPosition $ game w
-        (xc,yc) = currentPosition $ game w 
+        (x,y) = newPosition $ currentGame $ currentRound w
+        (xc,yc) = currentPosition $ currentGame $ currentRound w 
         section = [(fromIntegral xc * f, fromIntegral yc * f),(fromIntegral x * f, fromIntegral y *f)]
 
 drawMonitor :: World -> Picture 

@@ -10,7 +10,6 @@ module Management
     ( initUniverse
     , joinTheGame
     , Universe (..)
-    , Round (..)
     , module Field 
     ) where
 
@@ -26,34 +25,7 @@ import Data.Aeson
 import Field
 
 
-theSize :: Int
-theSize = 8
-
-data Round = Round {
-               -- | State of the current game
-               currentGame :: Game,
-               -- | First player's name
-               player1 :: Maybe String,
-               -- | 2nd player's name
-               player2 :: Maybe String,
-               -- | Current result of series of games - i.e. the round
-               result :: (Int,Int),
-               -- | # of the current game needed in case game is planed for fix number of games
-               numberOfCurrentGame :: Int,
-               -- | Different rounds' types can be imagined, like best of N, N games, ...
-               roundType :: RoundType,
-               -- | The common ID for both players
-               roundID :: Integer
-                } deriving (Eq, Generic, ToJSON, FromJSON)
-
-data RoundType =  NGames Int
-                | BestOfN Int
-                deriving (Eq, Generic, ToJSON, FromJSON)
-
-roundSize :: RoundType -> Int
-roundSize (NGames n) = n
-roundSize (BestOfN n) = n
-                
+        
 
 type RoundsMap = HM.Map Integer Round                
 
@@ -63,21 +35,7 @@ data Universe = Universe {
                 keyGen :: StdGen, 
                 message :: String,
                 errorInUniverse :: Maybe MyError
-                }
-
--- | New game initalization
-initRound' :: String         -- ^ 1st player's name
-            -> RoundType    -- ^ Type of game
-            -> Round
-initRound' name t = Round {
-                        currentGame = initGame theSize,
-                        player1 = Just name,
-                        player2 = Nothing,
-                        result = (0,0),
-                        numberOfCurrentGame = 0,
-                        roundType = t,
-                        roundID = 0
-                        }
+                } deriving (Eq, Show)
 
 -- | Registration of 2nd player
 initRoundCont :: String     -- ^ 2nd player's name
@@ -86,14 +44,7 @@ initRoundCont :: String     -- ^ 2nd player's name
               -> RoundsMap
 initRoundCont name = HM.adjust f 
     where f r = r { player2 = Just name }
-
-endOfRound :: Round -> Bool
-endOfRound r = case roundType r of  
-                NGames n  -> n == one + two 
-                BestOfN n -> round ((fromIntegral n+1) / 2) == max one two
-    where
-        (one,two) = result r
-
+    
 initID :: StdGen -> Round -> (StdGen, Round)
 initID g r = (newG, newR)        
     where
