@@ -25,8 +25,6 @@ import Data.Aeson
 import Field
 
 
-        
-
 type RoundsMap = HM.Map Integer Round                
 
 data Universe = Universe {
@@ -54,11 +52,11 @@ initID g r = (newG, newR)
 initRound :: StdGen -> String -> RoundType -> (StdGen, Round)
 initRound g name = initID g . initRound' name
                        
-initUniverse :: Universe
-initUniverse = Universe {
+initUniverse :: StdGen -> Universe
+initUniverse g = Universe {
                 roundsMap = HM.empty ,
                 roundToCont = HM.empty, --Nothing,
-                keyGen = mkStdGen 1375,
+                keyGen = g,
                 message = "",
                 errorInUniverse = Nothing
                 }

@@ -84,5 +84,37 @@ drawMonitor w = color green $ scale 0.2 0.2 $ translate f f $ text $ monitor w
     where
         f = factor w
 
+drawResult :: World -> Picture
+drawResult w = color orange $ translate (f * t / 2) (f * t) $ scale 0.15 0.15 $ text prettyResult
+    where
+        f = factor w
+        t = fromIntegral (sizeOfGame $ currentGame $ currentRound w) / 2 + 0.5
+        (a,b) = result $ currentRound w
+        prettyResult = show a ++ ":" ++ show b
+
+drawRoundType :: World -> Picture
+drawRoundType w = color orange $ translate (f * t / 2) (-f * t) $ scale 0.15 0.15 $ text prettyRound
+    where
+        f = factor w
+        t = fromIntegral (sizeOfGame $ currentGame $ currentRound w) / 2 + 0.5
+        prettyRound = show $ roundType $ currentRound w
+
+drawPlayers :: World -> [Picture]
+drawPlayers w = map (color (greyN 0.7)) [drawP1,drawP2]
+    where
+        f = factor w
+        t = fromIntegral (sizeOfGame $ currentGame $ currentRound w) / 2 + 0.5
+        drawP1 = translate (-f * t) (-f * t) $ scale 0.15 0.15 $ text (pname $ player1 $ currentRound w)
+        drawP2 = translate (-f * t) (f * t) $ scale 0.15 0.15 $ text (pname $ player2 $ currentRound w)
+        pname p = case p of
+                Just n -> n
+                _      -> "Annonymous"
+
 drawWorld :: World -> Picture 
-drawWorld w = pictures $ drawMonitor w : drawCurrentPosition w ++ drawGrid w ++ drawNewPosition w
+drawWorld w = pictures $ drawRoundType w 
+                        : drawResult w 
+                        : drawMonitor w 
+                        : drawPlayers w 
+                        ++ drawCurrentPosition w 
+                        ++ drawGrid w 
+                        ++ drawNewPosition w

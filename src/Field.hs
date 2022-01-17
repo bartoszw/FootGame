@@ -26,22 +26,30 @@ module Field
     ) where
 
 import           GHC.Generics
+import          Control.Lens
 import qualified Data.HashMap as HM
 import qualified Data.Array as A
 import           Data.Hashable
 import           Data.Aeson
 import           Data.Aeson.Types
---import qualified Data.Text.Array as A
 
+-- | Location = Position = point on 2 dimentional discrete plane
 type Location = (Int,Int) 
+
 -- | Section is not a vector! I.e. (a,b) :: Section === (b,a) :: Section
 type Section = (Location,Location)
+
+-- | Complete set of graph's edges.
 type Grid = HM.Map Section ()
+
 -- | FieldWidth must be an even number >= 6. Field is a square
 type FieldWidth = Int
 -- | FieldLength must be an even number >= 6. Field is a square
 type FieldLength = Int
+
+-- | A move is a list of connected sections, possibly with loops. Ex [(a,b),(b,c),(c,a),(a,d)]
 type Move = [Section]
+
 data Player = Player1 | Player2
     deriving (Show, Eq, Ord, A.Ix, Generic, ToJSON, FromJSON)
 
@@ -56,16 +64,6 @@ data MyError = IncorrectSection String
 
 theSize :: Int
 theSize = 8            
-
-{-instance (A.Ix ix, ToJSON ix, ToJSON val) => ToJSON (A.Array ix val) where
-  toJSON a = object ["Array" .= toJSON (A.assocs a)]
-
-instance (A.Ix ix, ToJSON ix, ToJSON val) => FromJSON (A.Array ix val) where
-    parseJSON = withObject “Occupation” $ \o -> do
-       title_ <- o .: “title”
-       tenure_ <- o .: “tenure”
-       salary_ <- o .: “salary”
-       return $ Occupation title_ tenure_ salary_ -}
 
 -- | Goals represent all possible results of the game, i.e. for reaching certain location. All locations without rewards = 0.
 --   Reward is always from Player1 point of view. Player2 has reward opposite to Player2. 
@@ -100,6 +98,7 @@ data Game = Game {
                 gameResult :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
                 } deriving (Eq, Show, Generic, ToJSON, FromJSON)
 
+-- | Round is a Game wrapped in additional contex information. Set of games are performed within one Round.
 data Round = Round {
                -- | State of the current game
                currentGame :: Game,
@@ -116,7 +115,9 @@ data Round = Round {
                -- | The common ID for both players
                roundID :: Integer
                 } deriving (Eq, Show, Generic, ToJSON, FromJSON)
+                
 
+-- | Scenario of a round
 data RoundType =  NGames Int
                 | BestOfN Int
                 deriving (Eq, Generic, ToJSON, FromJSON)
@@ -151,6 +152,7 @@ endOfRound r = case roundType r of
 roundSize :: RoundType -> Int
 roundSize (NGames n) = n
 roundSize (BestOfN n) = n
+
 initGame :: Int -> Game
 initGame s = Game {
                 sizeOfGame = s,

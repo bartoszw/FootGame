@@ -8,6 +8,7 @@ License     : BSD-3-Clause (see the LICENSE file)
 
 module Main where
 
+import System.IO ( stderr, hPutStr )
 import          Control.Lens
 import          Data.Text (Text,pack, unpack)
 import          Data.Text.Encoding (decodeUtf8)
@@ -176,8 +177,9 @@ handleEventGUI wenv node model evt = case evt of
     AppOnLeaveNbr         -> []
     AppGetRound           -> [Task  $ getRound model]
     AppGetListOfRounds    -> [Task  $ getListOfRounds model]
-    AppSetRound r         -> [Model $ model & roundContent ?~ r & sampleText .~ "OK"
-                             ,Task  $ maybePlayGame model]
+    AppSetRound r         -> [Task  $ maybePlayGame model
+                              ,Model $ model & roundContent ?~ r & sampleText .~ "OK"
+                             ]
     AppSetListOfRounds ls -> [Model $ model & sampleText   .~ ls]
     AppSetError t         -> [Model $ model & sampleText   .~ t]
   where 
@@ -210,7 +212,10 @@ handleEventGUI wenv node model evt = case evt of
         Nothing -> return AppInit
         Just ro -> case player2 ro of
           Nothing -> return AppInit
-          Just s -> print s >> playGame ro >> return AppInit
+          Just s -> E.catch (playGame ro >> return AppInit) 
+                          (\e -> do let err = show (e :: E.IOException)
+                                    hPutStr stderr ("Error: " ++ err)
+                                    return AppInit)
 
 
 

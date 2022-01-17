@@ -1,5 +1,7 @@
 module Main where
 
+import           System.Random
+import           Data.Time.Clock.POSIX
 import qualified Data.HashMap as HM
 import Graphics.Gloss
 import Data.IORef
@@ -51,7 +53,8 @@ playGame = play (window w) background 0 w drawWorld handleEvent iterateWorld
 
 launchWebServer :: IO ()
 launchWebServer = do
-                    ref <- newIORef initUniverse
+                    -- Below line can be replaced by initStdGen >>= newIORef . initUniverse once random can be used in version >= 1.2.1 
+                    ref <- (round <$> getPOSIXTime) >>= newIORef . initUniverse . mkStdGen 
                     --pool <- runStdoutLoggingT $ createSqlitePool "mal.db" 5 
                     --runStdoutLoggingT $ runSqlPool (runMigration migrateAll) pool
                     spockCfg <- defaultSpockCfg EmptySession PCNoDatabase (AppState ref)

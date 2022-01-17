@@ -48,6 +48,7 @@ extra-deps:
 - monomer-1.1.1.0@sha256:cb82adf223fcbf56b7841006df3f920e3e3d678143a119edb98fef4caa33e09e,15414
 - aeson-1.5.6.0@sha256:72c170b9fa0a4d1eaf47098902c621d0d95331cda1ebc4d86582bd557756b3ff,6791
 - nanovg-0.8.0.0@sha256:aa8d2864d17daae3ba8c834ea523d805b8a68414e9ba1df00b102b89348ec954,4914
+#- random-1.2.1@sha256:8bee24dc0c985a90ee78d94c61f8aed21c49633686f0f1c14c5078d818ee43a2,6598
 
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
