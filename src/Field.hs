@@ -6,6 +6,8 @@ This is a haddock comment describing your library
 For more information on how to write Haddock comments check the user guide:
 <https://www.haskell.org/haddock/doc/html/index.html>
 -}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Field
     ( Location
     , Section
@@ -23,6 +25,17 @@ module Field
     , initRound'
     , isPosEndOfMove
     , validateMove
+    , currentGame
+    , roundID
+    , grid
+    , sizeOfGame
+    , currentPosition
+    , newPosition
+    , result
+    ,roundType
+    ,player1
+    ,player2
+    , numberOfCurrentGame
     ) where
 
 import           GHC.Generics
@@ -85,38 +98,6 @@ instance (ToJSON k, ToJSON v) => ToJSON (HM.Map k v) where
 instance (Hashable k, Ord k, FromJSON k, FromJSON v) => FromJSON (HM.Map k v) where
     parseJSON xs = parseJSON xs >>= return . HM.fromList
 
-
-
--- | Game represents whole information needed to play / perform next move
-data Game = Game {
-                sizeOfGame :: Int,
-                grid :: Grid,
-                currentPosition :: Location,
-                newPosition :: Location,
-                currentPlayer :: Player,
-                goals :: Goals,
-                gameResult :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
-                } deriving (Eq, Show, Generic, ToJSON, FromJSON)
-
--- | Round is a Game wrapped in additional contex information. Set of games are performed within one Round.
-data Round = Round {
-               -- | State of the current game
-               currentGame :: Game,
-               -- | First player's name
-               player1 :: Maybe String,
-               -- | 2nd player's name
-               player2 :: Maybe String,
-               -- | Current result of series of games - i.e. the round
-               result :: (Int,Int),
-               -- | # of the current game needed in case game is planed for fix number of games
-               numberOfCurrentGame :: Int,
-               -- | Different rounds' types can be imagined, like best of N, N games, ...
-               roundType :: RoundType,
-               -- | The common ID for both players
-               roundID :: Integer
-                } deriving (Eq, Show, Generic, ToJSON, FromJSON)
-                
-
 -- | Scenario of a round
 data RoundType =  NGames Int
                 | BestOfN Int
@@ -127,27 +108,58 @@ instance Show RoundType where
     show (NGames n) = show n ++ " games"
     show (BestOfN n) = show "Best of " ++ show n
 
+-- | Game represents whole information needed to play / perform next move
+data Game = Game {
+                _sizeOfGame :: Int,
+                _grid :: Grid,
+                _currentPosition :: Location,
+                _newPosition :: Location,
+                _currentPlayer :: Player,
+                _goals :: Goals,
+                _gameResult :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
+                } deriving (Eq, Show, Generic, ToJSON, FromJSON)
+
+-- | Round is a Game wrapped in additional contex information. Set of games are performed within one Round.
+data Round = Round {
+               -- | State of the current game
+               _currentGame :: Game,
+               -- | First player's name
+               _player1 :: Maybe String,
+               -- | 2nd player's name
+               _player2 :: Maybe String,
+               -- | Current result of series of games - i.e. the round
+               _result :: (Int,Int),
+               -- | # of the current game needed in case game is planed for fix number of games
+               _numberOfCurrentGame :: Int,
+               -- | Different rounds' types can be imagined, like best of N, N games, ...
+               _roundType :: RoundType,
+               -- | The common ID for both players
+               _roundID :: Integer
+                } deriving (Eq, Show, Generic, ToJSON, FromJSON)
+                
+makeLenses 'Game
+makeLenses 'Round
 
 -- | New game initalization
 initRound' :: String         -- ^ 1st player's name
             -> RoundType    -- ^ Type of game
             -> Round
 initRound' name t = Round {
-                        currentGame = initGame theSize,
-                        player1 = Just name,
-                        player2 = Nothing,
-                        result = (0,0),
-                        numberOfCurrentGame = 0,
-                        roundType = t,
-                        roundID = 0
+                        _currentGame = initGame theSize,
+                        _player1 = Just name,
+                        _player2 = Nothing,
+                        _result = (0,0),
+                        _numberOfCurrentGame = 0,
+                        _roundType = t,
+                        _roundID = 0
                         }
 
 endOfRound :: Round -> Bool
-endOfRound r = case roundType r of  
+endOfRound r = case r ^. roundType of  
                 NGames n  -> n == one + two 
                 BestOfN n -> round ((fromIntegral n+1) / 2) == max one two
     where
-        (one,two) = result r
+        (one,two) = r ^. result
 
 roundSize :: RoundType -> Int
 roundSize (NGames n) = n
@@ -155,13 +167,13 @@ roundSize (BestOfN n) = n
 
 initGame :: Int -> Game
 initGame s = Game {
-                sizeOfGame = s,
-                grid = initField s s,
-                currentPosition = (0,0),
-                newPosition = (0,0),
-                currentPlayer = Player1,
-                goals = initGoals s,
-                gameResult = 0
+                _sizeOfGame = s,
+                _grid = initField s s,
+                _currentPosition = (0,0),
+                _newPosition = (0,0),
+                _currentPlayer = Player1,
+                _goals = initGoals s,
+                _gameResult = 0
                 } 
 
 initField :: FieldLength -> FieldWidth -> Grid
@@ -238,28 +250,28 @@ validateMove g = foldl validateSection (Right g)
     where
         validateSection :: Either MyError Game -> Section -> Either MyError Game
         validateSection (Left e) _ = Left e
-        validateSection (Right g) s@(from,to) | gameResult g /= 0 =
+        validateSection (Right g) s@(from,to) | g ^. gameResult /= 0 =
                                                         Right g 
-                                              | from /= currentPosition g = 
+                                              | from /= g ^. currentPosition = 
                                                         Left $ IncorrectSection ("Incorrect section " ++ show s ++ 
-                                                              " at current position" ++ show (currentPosition g))
-                                              | HM.lookup s (grid g) == Nothing  = 
+                                                              " at current position" ++ show (g ^. currentPosition))
+                                              | HM.lookup s (g ^. grid) == Nothing  = 
                                                         Left $ BusySection ("Section already busy " ++ show s)
                                               | otherwise =
-                                                        Right g {grid = HM.delete s (grid g)
-                                                                ,currentPosition = to
-                                                                ,currentPlayer = newPlayer to
-                                                                ,newPosition = to
-                                                                ,gameResult = goals g A.! (to,currentPlayer g)}
-        newPlayer to | isPosEndOfMove to g = playerSwap $ currentPlayer g
-                     | otherwise           = currentPlayer g
+                                                        Right g {_grid = HM.delete s (g ^. grid)
+                                                                ,_currentPosition = to
+                                                                ,_currentPlayer = newPlayer to
+                                                                ,_newPosition = to
+                                                                ,_gameResult = (g ^. goals) A.! (to,g ^. currentPlayer)}
+        newPlayer to | isPosEndOfMove to g = playerSwap $ g ^. currentPlayer
+                     | otherwise           = g ^. currentPlayer
                                                                                   
 nextPlayer :: Game -> Game
-nextPlayer g = g {currentPlayer = playerSwap $ currentPlayer g}
+nextPlayer g = g {_currentPlayer = playerSwap $ g ^. currentPlayer}
 
 allSections :: Location -> [Section]
 allSections (x,y) = [((a,b),(x,y)) | a <- [x-1..x], b <- [y-1..y+1], a /= x || b == y-1]
                  ++ [((x,y),(a,b)) | a <- [x..x+1], b <- [y-1..y+1], a /= x || b == y+1]
 
 isPosEndOfMove :: Location -> Game -> Bool
-isPosEndOfMove p gm = length (filter (`HM.member` grid gm) (allSections p)) == 8
+isPosEndOfMove p gm = length (filter (`HM.member` (gm ^. grid)) (allSections p)) == 8

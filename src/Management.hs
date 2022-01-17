@@ -13,7 +13,8 @@ module Management
     , module Field 
     ) where
 
-import GHC.Generics
+import          GHC.Generics
+import          Control.Lens
 import qualified Data.HashMap as HM
 import qualified Web.Spock as WS
 import Data.Time
@@ -41,13 +42,13 @@ initRoundCont :: String     -- ^ 2nd player's name
               -> RoundsMap   -- ^ RoundsMap where the round has to be adjusted
               -> RoundsMap
 initRoundCont name = HM.adjust f 
-    where f r = r { player2 = Just name }
+    where f r = r { _player2 = Just name }
     
 initID :: StdGen -> Round -> (StdGen, Round)
 initID g r = (newG, newR)        
     where
         (n,newG) = uniformR (0,10^6) g
-        newR = r { roundID = n }
+        newR = r { _roundID = n }
 
 initRound :: StdGen -> String -> RoundType -> (StdGen, Round)
 initRound g name = initID g . initRound' name
@@ -76,10 +77,10 @@ joinTheGame name n u | HM.member n' rTCs                -- there is an initializ
                             , newRound)
     where
         rTCs = roundToCont u                          -- HashMap of Rounds
-        rTC = (rTCs HM.! n') { player2 = Just name }  -- the round to continue initialization
+        rTC = (rTCs HM.! n') { _player2 = Just name }  -- the round to continue initialization
         n' = fromIntegral n
         (newKeyGen,newRound) = initRound (keyGen u) name (NGames n)
-        newRoundsMap = HM.insert (roundID rTC) rTC (roundsMap u)
+        newRoundsMap = HM.insert (rTC ^. roundID) rTC (roundsMap u)
 
 -- | Progresses the Round gven by reference within the Universe by given Move.
 --   In case of error (incorrect move, wrong key) provides with the error.
@@ -92,7 +93,7 @@ runTheGame u ix m = newUniverse
     where
         eitherG = case HM.lookup ix (roundsMap u) of          
                     Nothing -> Left $ WrongID "fatal error: incorrect game ID. Impossible to identify the game on server side."
-                    Just ro -> validateMove (currentGame ro) m
+                    Just ro -> validateMove (ro ^. currentGame) m
         newUniverse = case eitherG of
           Left s -> u { errorInUniverse = Just s }
-          Right g -> u { roundsMap = HM.adjust (\ro -> ro { currentGame = g} ) ix (roundsMap u) }
+          Right g -> u { roundsMap = HM.adjust (\ro -> ro { _currentGame = g} ) ix (roundsMap u) }

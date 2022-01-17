@@ -1,7 +1,14 @@
+{-|
+Module      : FootGame
+Desription  : Executable for the Foot server
+Copyright   : (c) 2022 Bartosz Wójcik
+License     : BSD-3-Clause (see the LICENSE file)
+-}
 module Main where
 
 import           System.Random
 import           Data.Time.Clock.POSIX
+import           Control.Lens
 import qualified Data.HashMap as HM
 import Graphics.Gloss
 import Data.IORef
@@ -13,18 +20,11 @@ import Server
 import Events
 
 
---width, height, offset :: Int
---width = 400
---height = 400
---offset = 100
 theSize :: Int
 theSize = 8
 
---factor :: Float
---factor = fromIntegral height / (fromIntegral theSize + 2)
-
 window :: World -> Display
-window w = InWindow "Foot" (width w, height w) (offset w, offset w)
+window w = InWindow "Foot" (w ^. width, w ^. height) (w ^. offset, w ^. offset)
      
 
 background :: Color

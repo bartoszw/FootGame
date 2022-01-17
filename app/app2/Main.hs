@@ -1,5 +1,5 @@
 {-|
-Module      : Player
+Module      : FootPlayer
 Desription  : Executable for the Foot player
 Copyright   : (c) 2022 Bartosz Wójcik
 License     : BSD-3-Clause (see the LICENSE file)
@@ -14,6 +14,7 @@ import          Data.Text (Text,pack, unpack)
 import          Data.Text.Encoding (decodeUtf8)
 import qualified Data.ByteString.Lazy as BL (toStrict,empty) 
 import qualified Data.ByteString.Char8 as CS (pack) 
+import          Data.Maybe
 
 import          Network.Wreq
 import          Network.HTTP.Client  hiding (responseBody)
@@ -130,34 +131,34 @@ buildUI wenv model = widgetTree where
     Just r  -> vstack [
       hstack [
         inputFieldText "Player 1",
-        titleText (pack $ show $ player1 r) `styleBasic` valueStyle,
+        titleText (pack $ show $ fromMaybe "" $ r ^. player1) `styleBasic` valueStyle,
         filler,
         inputFieldText "Player 2",
-        titleText (pack $ show $ player2 r) `styleBasic` valueStyle
+        titleText (pack $ show $ fromMaybe "" $ r ^. player2) `styleBasic` valueStyle
         ] `styleBasic` [paddingV 10],
 
       spacer,
 
       hstack [
         inputFieldText "Round type",
-        titleText (pack $ show $ roundType r) `styleBasic` valueStyle
+        titleText (pack $ show $ r ^. roundType) `styleBasic` valueStyle
         ] `styleBasic` [paddingV 10],
 
       spacer,
 
       hstack [
         inputFieldText "Game #",
-        titleText (pack $ show $ numberOfCurrentGame r) `styleBasic` valueStyle,
+        titleText (pack $ show $ r ^. numberOfCurrentGame) `styleBasic` valueStyle,
         filler,
         inputFieldText "Result",
-        titleText (pack $ show $ result r) `styleBasic` valueStyle
+        titleText (pack $ show $ r ^. result) `styleBasic` valueStyle
         ] `styleBasic` [paddingV 10],
 
       spacer,
 
       hstack [
         inputFieldText "Round ID",
-        titleText (pack $ show $ roundID r) `styleBasic` valueStyle
+        titleText (pack $ show $ r ^. roundID) `styleBasic` valueStyle
         ] `styleBasic` [paddingV 10],
 
       spacer
@@ -210,7 +211,7 @@ handleEventGUI wenv node model evt = case evt of
     maybePlayGame model = do
       case model ^. roundContent of
         Nothing -> return AppInit
-        Just ro -> case player2 ro of
+        Just ro -> case ro ^. player2 of
           Nothing -> return AppInit
           Just s -> E.catch (playGame ro >> return AppInit) 
                           (\e -> do let err = show (e :: E.IOException)
@@ -254,7 +255,7 @@ theSize :: Int
 theSize = 8
 
 window :: Draw.World -> G.Display
-window w = G.InWindow "Foot" (Draw.width w, Draw.height w) (Draw.offset w, Draw.offset w)
+window w = G.InWindow "Foot" (w ^. Draw.width, w ^. Draw.height) (w ^. Draw.offset, w ^. Draw.offset)
      
 background :: G.Color
 background = G.black
@@ -264,4 +265,4 @@ playGame ro = G.play (window w) background 0 w Draw.drawWorld handleEvent iterat
     where
         iterateWorld _ w = w
         -- Initialize World and update it by current game
-        w = (Draw.initWorld theSize) {Draw.currentRound = ro}
+        w = (Draw.initWorld theSize) {Draw._currentRound = ro}
