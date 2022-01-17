@@ -6,11 +6,16 @@ This is a haddock comment describing your library
 For more information on how to write Haddock comments check the user guide:
 <https://www.haskell.org/haddock/doc/html/index.html>
 -}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Management
     ( initUniverse
     , joinTheGame
     , Universe (..)
     , module Field 
+    , roundsMap
+    , roundToCont
+    , keyGen
     ) where
 
 import          GHC.Generics
@@ -29,12 +34,14 @@ import Field
 type RoundsMap = HM.Map Integer Round                
 
 data Universe = Universe {
-                roundsMap :: RoundsMap,
-                roundToCont :: RoundsMap, --Maybe Round,
-                keyGen :: StdGen, 
-                message :: String,
-                errorInUniverse :: Maybe MyError
+                _roundsMap :: RoundsMap,
+                _roundToCont :: RoundsMap, 
+                _keyGen :: StdGen, 
+                _message :: String,
+                _errorInUniverse :: Maybe MyError
                 } deriving (Eq, Show)
+
+makeLenses 'Universe                
 
 -- | Registration of 2nd player
 initRoundCont :: String     -- ^ 2nd player's name
@@ -55,32 +62,32 @@ initRound g name = initID g . initRound' name
                        
 initUniverse :: StdGen -> Universe
 initUniverse g = Universe {
-                roundsMap = HM.empty ,
-                roundToCont = HM.empty, --Nothing,
-                keyGen = g,
-                message = "",
-                errorInUniverse = Nothing
+                _roundsMap = HM.empty ,
+                _roundToCont = HM.empty, --Nothing,
+                _keyGen = g,
+                _message = "",
+                _errorInUniverse = Nothing
                 }
 
 -- | Allows joining the game: if there is one open awaiting, it's joined. Otherwise
 --   a new one is created to wait for the next player.    
 joinTheGame :: String -> Int -> Universe -> (Universe,Round)
 joinTheGame name n u | HM.member n' rTCs                -- there is an initialized round waiting for 2nd player to continue
-                        = (u { roundsMap = newRoundsMap
-                             , roundToCont = HM.delete n' rTCs
+                        = (u { _roundsMap = newRoundsMap
+                             , _roundToCont = HM.delete n' rTCs
                              } 
                             , rTC)
                      | otherwise                        -- there is no initialized round for n games
-                        = (u {roundToCont = HM.insert n' newRound rTCs
-                             ,keyGen = newKeyGen
+                        = (u {_roundToCont = HM.insert n' newRound rTCs
+                             ,_keyGen = newKeyGen
                              }
                             , newRound)
     where
-        rTCs = roundToCont u                          -- HashMap of Rounds
+        rTCs = u ^. roundToCont                           -- HashMap of Rounds
         rTC = (rTCs HM.! n') { _player2 = Just name }  -- the round to continue initialization
         n' = fromIntegral n
-        (newKeyGen,newRound) = initRound (keyGen u) name (NGames n)
-        newRoundsMap = HM.insert (rTC ^. roundID) rTC (roundsMap u)
+        (newKeyGen,newRound) = initRound (u ^. keyGen) name (NGames n)
+        newRoundsMap = HM.insert (rTC ^. roundID) rTC (u ^. roundsMap)
 
 -- | Progresses the Round gven by reference within the Universe by given Move.
 --   In case of error (incorrect move, wrong key) provides with the error.
@@ -91,9 +98,9 @@ runTheGame :: Universe  -- ^ Initial state
             -> Universe -- ^ Output state
 runTheGame u ix m = newUniverse
     where
-        eitherG = case HM.lookup ix (roundsMap u) of          
+        eitherG = case HM.lookup ix (u ^. roundsMap) of          
                     Nothing -> Left $ WrongID "fatal error: incorrect game ID. Impossible to identify the game on server side."
                     Just ro -> validateMove (ro ^. currentGame) m
         newUniverse = case eitherG of
-          Left s -> u { errorInUniverse = Just s }
-          Right g -> u { roundsMap = HM.adjust (\ro -> ro { _currentGame = g} ) ix (roundsMap u) }
+          Left s -> u { _errorInUniverse = Just s }
+          Right g -> u { _roundsMap = HM.adjust (\ro -> ro { _currentGame = g} ) ix (u ^. roundsMap) }

@@ -13,6 +13,7 @@ module Server
     ) where
 
 import           GHC.Generics
+import           Control.Lens
 import qualified Data.HashMap as HM
 import           Web.Spock
 import           Web.Spock.Action
@@ -80,9 +81,9 @@ getRound :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
 getRound r = do
                  (AppState ref) <- getState 
                  u <- liftIO $ readIORef ref
-                 case HM.lookup r (roundsMap u) of          
+                 case HM.lookup r (u ^. roundsMap) of          
                      Just ro -> json ro
-                     Nothing -> case HM.lookup r (roundToCont u) of 
+                     Nothing -> case HM.lookup r (u ^. roundToCont) of 
                                   Just r2 -> json r2
                                   _       -> text ("incorrect game ID (" 
                                                   <> pack (show r) 
@@ -94,7 +95,7 @@ getListOfActiveRounds :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.Mo
 getListOfActiveRounds = do
                  (AppState ref) <- getState 
                  u <- liftIO $ readIORef ref
-                 json $ (HM.keys (roundsMap u) , HM.keys (roundToCont u))
+                 json $ (HM.keys (u ^. roundsMap) , HM.keys (u ^. roundToCont))
 
 
 postJoin :: ActionCtxT ctx (WebStateM () MySession MyAppState) a
@@ -104,7 +105,7 @@ postJoin = do
             mName <- param "name"
             let nm = case mName of
                       Just n -> n
-                      _      -> "Player " ++ show (fst $ uniformR (1,100) (keyGen u)::Int)
+                      _      -> "Player " ++ show (fst $ uniformR (1,100) (u ^. keyGen)::Int)
             mRound <- param "round"
             case mRound of
               Nothing -> text "missing wished number of games"
