@@ -16,6 +16,8 @@ module Management
     , roundsMap
     , roundToCont
     , keyGen
+    , idAccess2nd
+    , runTheGame
     ) where
 
 import          GHC.Generics
@@ -30,11 +32,18 @@ import Data.IORef
 import Data.Aeson
 import Field
 
-
+-- | Unique ID of a round maped to the round data
 type RoundsMap = HM.Map Integer Round                
 
+-- | 2nd player unique ID maped to Round's unique ID.
+--   Both players have to have personal access keys to the same round. 1st player's personal access key is the same time the 
+--   unique ID of the Round. 2nd player's personal access key first maps Round's unique ID.
+type IdMap = HM.Map Integer Integer
+
+-- | The whole universe of all Rounds on server side with context data
 data Universe = Universe {
                 _roundsMap :: RoundsMap,
+                _idAccess2nd :: IdMap,
                 _roundToCont :: RoundsMap, 
                 _keyGen :: StdGen, 
                 _message :: String,
@@ -49,7 +58,8 @@ initRoundCont :: String     -- ^ 2nd player's name
               -> RoundsMap   -- ^ RoundsMap where the round has to be adjusted
               -> RoundsMap
 initRoundCont name = HM.adjust f 
-    where f r = r { _player2 = Just name }
+    where f r = r & player2 ?~ name
+                  & currentGame . iAm .~ Player2
     
 initID :: StdGen -> Round -> (StdGen, Round)
 initID g r = (newG, newR)        
@@ -63,6 +73,7 @@ initRound g name = initID g . initRound' name
 initUniverse :: StdGen -> Universe
 initUniverse g = Universe {
                 _roundsMap = HM.empty ,
+                _idAccess2nd = HM.empty,
                 _roundToCont = HM.empty, --Nothing,
                 _keyGen = g,
                 _message = "",
@@ -73,34 +84,41 @@ initUniverse g = Universe {
 --   a new one is created to wait for the next player.    
 joinTheGame :: String -> Int -> Universe -> (Universe,Round)
 joinTheGame name n u | HM.member n' rTCs                -- there is an initialized round waiting for 2nd player to continue
-                        = (u { _roundsMap = newRoundsMap
-                             , _roundToCont = HM.delete n' rTCs
-                             } 
+                        = ( u & roundsMap   .~ newRoundsMap           
+                              & idAccess2nd .~ newAccess2nd
+                              & roundToCont .~ HM.delete n' rTCs   
+                              & keyGen      .~ newkeyGen'                           
                             , rTC)
                      | otherwise                        -- there is no initialized round for n games
-                        = (u {_roundToCont = HM.insert n' newRound rTCs
-                             ,_keyGen = newKeyGen
-                             }
+                        = (u & roundToCont  .~ HM.insert n' newRound rTCs
+                             & keyGen       .~ newKeyGen
                             , newRound)
     where
         rTCs = u ^. roundToCont                           -- HashMap of Rounds
-        rTC = (rTCs HM.! n') { _player2 = Just name }  -- the round to continue initialization
+        rTC = (rTCs HM.! n') { _player2 = Just name }     -- the round to continue initialization
         n' = fromIntegral n
         (newKeyGen,newRound) = initRound (u ^. keyGen) name (NGames n)
         newRoundsMap = HM.insert (rTC ^. roundID) rTC (u ^. roundsMap)
+        (id',newkeyGen') = uniformR (0,10^6::Integer) (u ^. keyGen)       -- 2nd player's id generation
+        newAccess2nd = HM.insert id' (rTC ^. roundID) (u ^. idAccess2nd)  -- 2nd player's id storage
 
--- | Progresses the Round gven by reference within the Universe by given Move.
+-- | Progresses the Round given by reference within the Universe by given Move.
 --   In case of error (incorrect move, wrong key) provides with the error.
 runTheGame :: Universe  -- ^ Initial state
-            -> Integer  -- ^ key to the Round to be progressed
+            -> Integer  -- ^ key to the Round (of 1st or 2nd player) to be progressed
             -> Move     -- ^ the Move. Move can be incomplete, can be composed of sequential moves of opponents, 
                         --   the only requirement is that is composed of sequential sections, regardless the player.
             -> Universe -- ^ Output state
 runTheGame u ix m = newUniverse
     where
-        eitherG = case HM.lookup ix (u ^. roundsMap) of          
+        -- check if RoundId exists
+        eitherG i = case HM.lookup i (u ^. roundsMap) of          
                     Nothing -> Left $ WrongID "fatal error: incorrect game ID. Impossible to identify the game on server side."
                     Just ro -> validateMove (ro ^. currentGame) m
-        newUniverse = case eitherG of
-          Left s -> u { _errorInUniverse = Just s }
-          Right g -> u { _roundsMap = HM.adjust (\ro -> ro { _currentGame = g} ) ix (u ^. roundsMap) }
+        -- 1st check if the move belongs to the 2nd player
+        maybe2ndPlayer = case HM.lookup ix (u ^. idAccess2nd) of          
+                    Nothing -> eitherG ix       -- If not, then perhaps to the 1st one
+                    Just rIx -> eitherG rIx     -- If yes, then look up using roundID
+        newUniverse = case maybe2ndPlayer of
+          Left s  -> u & errorInUniverse ?~ s
+          Right g -> u & roundsMap .~ HM.adjust (\ro -> ro & currentGame .~ g) ix (u ^. roundsMap)

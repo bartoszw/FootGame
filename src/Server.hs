@@ -19,10 +19,11 @@ import           Web.Spock
 import           Web.Spock.Action
 import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import           Data.Aeson hiding (json)
-import           Data.Text (pack)
+import qualified Data.Text as T
 import           Data.IORef ( IORef, readIORef, writeIORef )
 import           Control.Monad.IO.Class ( MonadIO(..) )
 import           System.Random ( uniformR )
+import qualified Data.ByteString.Lazy.Char8 as CS
 import           Management
 
 -- | Session is empty as we connect to right Round via RoundID
@@ -37,6 +38,7 @@ app =
         get "home" getHome
         get "/" getHome
         post "join" postJoin
+        post "move" postValidateMove
 {-
         get "newpasswd" getHome
         get "hello" $ html helloHTML
@@ -70,32 +72,52 @@ app =
 -- | Route Home requires parameter Round and provides with data of this round
 getHome :: ActionCtxT () (WebStateM () MySession MyAppState) b
 getHome =  do
+            (AppState ref) <- getState 
+            u <- liftIO $ readIORef ref
             iround <- param "round"
             case iround of
-              (Just ir) -> getRound ir 
-              _         -> getListOfActiveRounds
+              Nothing -> getListOfActiveRounds
+              Just ir -> case getRound u ir of
+                Left txt     -> text txt
+                Right (ro,p) -> json $ ro & currentGame . iAm .~ p      -- iAm is set in accordance to the player who sent the request
 
-getRound :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
+{-
+agetRound :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
  SpockState (ActionCtxT ctx m) ~ MyAppState) =>
  Integer -> ActionCtxT ctx m b
-getRound r = do
-                 (AppState ref) <- getState 
-                 u <- liftIO $ readIORef ref
-                 case HM.lookup r (u ^. roundsMap) of          
-                     Just ro -> json ro
-                     Nothing -> case HM.lookup r (u ^. roundToCont) of 
+agetRound r = do
+                 case HM.lookup r (u ^. idAccess2nd) of
+                    Just idRo -> getRound' idRo u Player2 -- ID of 2nd player
+                    Nothing   -> getRound' r u Player1    -- ID of 1st player == Round ID
+    where getRound' r' u p =
+                 case HM.lookup r' (u ^. roundsMap) of          
+                     Just ro -> json $ ro & currentGame . iAm .~ p      -- iAm is set in accordance to the player who sent the request
+                     Nothing -> case HM.lookup r' (u ^. roundToCont) of   -- TODO: temporary solution
                                   Just r2 -> json r2
                                   _       -> text ("incorrect game ID (" 
                                                   <> pack (show r) 
                                                   <> "). Impossible to identify the game on server side.")
-                    
+-}
+getRound :: Universe -> Integer -> Either T.Text (Round, Player)
+getRound u r = do
+                 case HM.lookup r (u ^. idAccess2nd) of
+                    Just idRo -> getRound' idRo u Player2 -- ID of 2nd player
+                    Nothing   -> getRound' r u Player1    -- ID of 1st player == Round ID
+    where getRound' r' u p =
+                 case HM.lookup r' (u ^. roundsMap) of          
+                     Just ro -> Right (ro,p)
+                     Nothing -> Left $ T.pack "incorrect game ID (" 
+                                    <> T.pack (show r')
+                                    <> "). Impossible to identify the game on server side."
+
+
 getListOfActiveRounds :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
  SpockState (ActionCtxT ctx m) ~ MyAppState) =>
  ActionCtxT ctx m b
 getListOfActiveRounds = do
                  (AppState ref) <- getState 
                  u <- liftIO $ readIORef ref
-                 json $ (HM.keys (u ^. roundsMap) , HM.keys (u ^. roundToCont))
+                 json (HM.keys (u ^. roundsMap) , HM.assocs (u ^. idAccess2nd) , HM.keys (u ^. roundToCont))
 
 
 postJoin :: ActionCtxT ctx (WebStateM () MySession MyAppState) a
@@ -113,4 +135,23 @@ postJoin = do
                       let (newU,newR) = joinTheGame nm n u
                       liftIO $ writeIORef ref newU
                       json newR
+
+postValidateMove :: ActionCtxT ctx (WebStateM () MySession MyAppState) a
+postValidateMove = do
+            (AppState ref) <- getState 
+            u <- liftIO $ readIORef ref
+            iround <- param "round"
+            moveJ <- param "move"
+            case (iround,moveJ) of
+              (Just ir, Just move) -> 
+                case eitherDecode (CS.pack move) of
+                  Left s -> text "syntax issue: impossible to decode the move"
+                  Right m -> do
+                    let newU = runTheGame u ir m
+                    liftIO $ writeIORef ref newU
+                    json ("OK" :: String)
+              _ -> text "missing game reference or move to proceed"
+
+              
+
             

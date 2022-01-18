@@ -17,20 +17,41 @@ import Field
 import Draw
 import Graphics.Gloss.Interface.IO.Interact
 
+-- | If case mouse points to an available section, the section is displayed as a hint
 handleEvent :: Event -> World -> World 
-handleEvent (EventMotion (x,y)) w = w {_monitor = show x' ++ "," ++ show y' ++ ":" ++ show curP
-                                      ,_currentRound = (w ^. currentRound) {
-                                                        _currentGame = (w  ^. currentRound . currentGame) {_newPosition = newP}
-                                                        }
-                                        }
+handleEvent (EventMotion (x,y)) w 
+            | itsMe     = w & monitor .~ show x' ++ "," ++ show y' ++ ":" ++ show curP
+                            & currentRound . currentGame .newPosition .~ newP
+            | otherwise = w
     where
         x' = round $ x / w ^. factor
         y' = round $ y / w ^. factor
-        curP = w ^. currentRound . currentGame . currentPosition
-        g = w ^. currentRound . currentGame . grid
+        game = w ^. currentRound . currentGame
+        curP = game ^. currentPosition
+        g = game ^. grid
+        itsMe = game ^. currentPlayer == game ^. iAm 
         newP | HM.member ((x',y'),curP) g ||
-               HM.member (curP,(x',y')) g = (x',y')
-             | otherwise             = w ^. currentRound . currentGame . currentPosition
-               
+               HM.member (curP,(x',y')) g   = (x',y')
+             | otherwise                    = curP
+
+-- | Left mouse button click while mouse pointing to an available section, the section is validated and done.
+--   In case move is finished it is so displayed.
+handleEvent (EventKey (MouseButton LeftButton) Up _ (x,y) ) w 
+            | newP == curP  = w
+            | itsMe         = w & currentRound . currentGame .~ newG
+            | otherwise     = w
+    where
+        x' = round $ x / w ^. factor
+        y' = round $ y / w ^. factor
+        game = w ^. currentRound . currentGame
+        curP = game ^. currentPosition
+        g = game ^. grid
+        itsMe = game ^. currentPlayer == game ^. iAm
+        (section, newP) | HM.member ((x',y'),curP) g = (((x',y'),curP), (x',y'))
+                        | HM.member (curP,(x',y')) g = ((curP,(x',y')), (x',y'))
+                        | otherwise                  = ((curP,curP)   , curP)
+        newG = case validateMove game [section] of          
+          Left me -> undefined -- TODO display error message and get from server new state
+          Right ga -> ga
 
 handleEvent _ w = w

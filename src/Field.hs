@@ -11,7 +11,7 @@ For more information on how to write Haddock comments check the user guide:
 module Field
     ( Location
     , Section
-    , Player
+    , Player (..)
     , Move
     , Grid
     , Game (..)
@@ -32,10 +32,12 @@ module Field
     , currentPosition
     , newPosition
     , result
-    ,roundType
-    ,player1
-    ,player2
+    , roundType
+    , player1
+    , player2
     , numberOfCurrentGame
+    , iAm
+    , currentPlayer
     ) where
 
 import           GHC.Generics
@@ -115,6 +117,7 @@ data Game = Game {
                 _currentPosition :: Location,
                 _newPosition :: Location,
                 _currentPlayer :: Player,
+                _iAm :: Player,
                 _goals :: Goals,
                 _gameResult :: Int -- ^ Game result from Player1 point of view. The game finishes when result /= 0
                 } deriving (Eq, Show, Generic, ToJSON, FromJSON)
@@ -172,6 +175,7 @@ initGame s = Game {
                 _currentPosition = (0,0),
                 _newPosition = (0,0),
                 _currentPlayer = Player1,
+                _iAm = Player1,
                 _goals = initGoals s,
                 _gameResult = 0
                 } 
@@ -267,7 +271,7 @@ validateMove g = foldl validateSection (Right g)
                      | otherwise           = g ^. currentPlayer
                                                                                   
 nextPlayer :: Game -> Game
-nextPlayer g = g {_currentPlayer = playerSwap $ g ^. currentPlayer}
+nextPlayer g = g & currentPlayer .~ playerSwap (g ^. currentPlayer)
 
 allSections :: Location -> [Section]
 allSections (x,y) = [((a,b),(x,y)) | a <- [x-1..x], b <- [y-1..y+1], a /= x || b == y-1]

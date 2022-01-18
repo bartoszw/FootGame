@@ -257,12 +257,15 @@ theSize = 8
 window :: Draw.World -> G.Display
 window w = G.InWindow "Foot" (w ^. Draw.width, w ^. Draw.height) (w ^. Draw.offset, w ^. Draw.offset)
      
-background :: G.Color
-background = G.black
+background :: Player -> G.Color
+background Player1 = G.black
+background Player2 = G.greyN 0.2
+
 -- | ===================================  playGame  ==================================================================
 playGame :: Round -> IO ()
-playGame ro = G.play (window w) background 0 w Draw.drawWorld handleEvent iterateWorld
+playGame ro = G.play (window w) (background p) 0 w Draw.drawWorld handleEvent iterateWorld
     where
         iterateWorld _ w = w
         -- Initialize World and update it by current game
-        w = (Draw.initWorld theSize) {Draw._currentRound = ro}
+        w = (Draw.initWorld theSize) & Draw.currentRound .~ ro
+        p = ro ^. currentGame . iAm
