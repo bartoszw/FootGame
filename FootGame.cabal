@@ -25,9 +25,11 @@ source-repository head
 
 library
   exposed-modules:
+      ClientServerTools
       Draw
       Events
       Field
+      IterateWorld
       Lib
       Management
       Server
@@ -52,6 +54,7 @@ library
     , gloss
     , hashable
     , hashmap >=1.3.3
+    , http-client
     , lens
     , monomer
     , random
@@ -86,6 +89,7 @@ executable FootGame
     , gloss
     , hashable
     , hashmap >=1.3.3
+    , http-client
     , lens
     , monomer
     , random
@@ -156,6 +160,7 @@ test-suite FootGame-test
     , gloss
     , hashable
     , hashmap >=1.3.3
+    , http-client
     , lens
     , monomer
     , random

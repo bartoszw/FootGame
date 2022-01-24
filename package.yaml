@@ -37,6 +37,7 @@ dependencies:
 - lens
 - wreq
 - bytestring
+- http-client
 
 default-extensions:
 - DeriveGeneric
@@ -67,7 +68,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - FootGame
-    - http-client
 
 tests:
   FootGame-test:

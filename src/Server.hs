@@ -23,6 +23,7 @@ import qualified Data.Text as T
 import           Data.IORef ( IORef, readIORef, writeIORef )
 import           Control.Monad.IO.Class ( MonadIO(..) )
 import           System.Random ( uniformR )
+import           System.IO (hPutStrLn, stderr)
 import qualified Data.ByteString.Lazy.Char8 as CS
 import           Management
 
@@ -80,6 +81,7 @@ getHome =  do
               Just ir -> case getRound u ir of
                 Left txt     -> text txt
                 Right (ro,p) -> json $ ro & currentGame . iAm .~ p      -- iAm is set in accordance to the player who sent the request
+                                          & roundID .~ ir               -- roundID set separately for 1st and 2nd player
 
 {-
 agetRound :: (HasSpock (ActionCtxT ctx m), Control.Monad.IO.Class.MonadIO m,
@@ -149,7 +151,13 @@ postValidateMove = do
                   Right m -> do
                     let newU = runTheGame u ir m
                     liftIO $ writeIORef ref newU
-                    json ("OK" :: String)
+                    let msg = case getTheGame ir newU of
+                          Just round -> show (round ^. currentGame . currentPosition) ++ 
+                                        show (round ^. currentGame . moveToCont)
+                          Nothing    -> "Nothing"
+                    case newU ^. errorInUniverse of
+                      Nothing  -> json $"OK " ++ msg 
+                      Just err -> json $ show err ++ msg
               _ -> text "missing game reference or move to proceed"
 
               

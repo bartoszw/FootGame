@@ -21,7 +21,9 @@ import          Network.HTTP.Client  hiding (responseBody)
 import qualified Control.Exception as E
 import          Monomer
 import qualified Graphics.Gloss as G
+import qualified Graphics.Gloss.Interface.IO.Game as G
 import          Management
+import          IterateWorld
 import          Events
 import qualified Draw
 
@@ -178,7 +180,7 @@ handleEventGUI wenv node model evt = case evt of
     AppOnLeaveNbr         -> []
     AppGetRound           -> [Task  $ getRound model]
     AppGetListOfRounds    -> [Task  $ getListOfRounds model]
-    AppSetRound r         -> [Task  $ maybePlayGame model
+    AppSetRound r         -> [Task  $ maybePlayGame r
                               ,Model $ model & roundContent ?~ r & sampleText .~ "OK"
                              ]
     AppSetListOfRounds ls -> [Model $ model & sampleText   .~ ls]
@@ -186,10 +188,12 @@ handleEventGUI wenv node model evt = case evt of
   where 
     getRound model = do 
       let url = "http://" ++ unpack (model ^. serverUrl) ++ ":8080/?round=" ++ show (model ^. roundId)
+      print url -- TODO only dev
       --r <- asJSON =<< get uri -- :: IO (Either e (Response Universe))
       rb <- get url -- `E.catch` handler
       case asJSON rb of
-        Right rr  -> return $ AppSetRound $ rr ^. responseBody
+        Right rr  -> (print $ rr ^. responseBody . roundID) >> -- TODO only dev
+                     (return $ AppSetRound $ rr ^. responseBody)
         Left err -> return $ AppSetError $ decodeUtf8 $ BL.toStrict $ rb ^. responseBody -- pack $ show err
 
     postGameStart model = do
@@ -208,7 +212,8 @@ handleEventGUI wenv node model evt = case evt of
         Right rr  -> return $ AppSetListOfRounds $ rr ^. responseBody
         Left err -> return $ AppSetError $ decodeUtf8 $ BL.toStrict $ rb ^. responseBody -- pack $ show err
 
-    maybePlayGame model = do
+    maybePlayGame r = playGame r >> return AppInit
+   {- maybePlayGame model r = do
       case model ^. roundContent of
         Nothing -> return AppInit
         Just ro -> case ro ^. player2 of
@@ -216,7 +221,7 @@ handleEventGUI wenv node model evt = case evt of
           Just s -> E.catch (playGame ro >> return AppInit) 
                           (\e -> do let err = show (e :: E.IOException)
                                     hPutStr stderr ("Error: " ++ err)
-                                    return AppInit)
+                                    return AppInit)-}
 
 
 
@@ -263,9 +268,9 @@ background Player2 = G.greyN 0.2
 
 -- | ===================================  playGame  ==================================================================
 playGame :: Round -> IO ()
-playGame ro = G.play (window w) (background p) 0 w Draw.drawWorld handleEvent iterateWorld
+playGame ro = G.playIO (window w) (background p) 1 w Draw.drawWorld handleEvent iterateWorld
     where
-        iterateWorld _ w = w
+        --iterateWorld _ = return   -- TODO: complete later
         -- Initialize World and update it by current game
-        w = (Draw.initWorld theSize) & Draw.currentRound .~ ro
+        w = (Draw.initWorld theSize) & Draw.currentRound .~ ro -- TODO: complete url and port
         p = ro ^. currentGame . iAm

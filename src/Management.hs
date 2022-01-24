@@ -18,6 +18,8 @@ module Management
     , keyGen
     , idAccess2nd
     , runTheGame
+    , errorInUniverse
+    , getTheGame
     ) where
 
 import          GHC.Generics
@@ -82,23 +84,26 @@ initUniverse g = Universe {
 
 -- | Allows joining the game: if there is one open awaiting, it's joined. Otherwise
 --   a new one is created to wait for the next player.    
-joinTheGame :: String -> Int -> Universe -> (Universe,Round)
+joinTheGame :: String -> Int -> Universe 
+            -> (Universe,Round)     -- ^ Universe to be stored on server side, Round to be passed to the client
 joinTheGame name n u | HM.member n' rTCs                -- there is an initialized round waiting for 2nd player to continue
                         = ( u & roundsMap   .~ newRoundsMap           
                               & idAccess2nd .~ newAccess2nd
                               & roundToCont .~ HM.delete n' rTCs   
                               & keyGen      .~ newkeyGen'                           
-                            , rTC)
+                            , rTC2nd)
                      | otherwise                        -- there is no initialized round for n games
                         = (u & roundToCont  .~ HM.insert n' newRound rTCs
                              & keyGen       .~ newKeyGen
                             , newRound)
     where
-        rTCs = u ^. roundToCont                           -- HashMap of Rounds
-        rTC = (rTCs HM.! n') { _player2 = Just name }     -- the round to continue initialization
+        rTCs = u ^. roundToCont                             -- HashMap of Rounds
+        rTC = (rTCs HM.! n') & player2 ?~ name              -- the round to continue initialization
+        rTC2nd = rTC & roundID .~ id'                -- 2nd player gets own game ID
+                     & currentGame . iAm .~ Player2  -- 2nd player has to know who he is
         n' = fromIntegral n
         (newKeyGen,newRound) = initRound (u ^. keyGen) name (NGames n)
-        newRoundsMap = HM.insert (rTC ^. roundID) rTC (u ^. roundsMap)
+        newRoundsMap = HM.insert (rTC ^. roundID) rTC (u ^. roundsMap)    -- 2nd player
         (id',newkeyGen') = uniformR (0,10^6::Integer) (u ^. keyGen)       -- 2nd player's id generation
         newAccess2nd = HM.insert id' (rTC ^. roundID) (u ^. idAccess2nd)  -- 2nd player's id storage
 
@@ -117,8 +122,21 @@ runTheGame u ix m = newUniverse
                     Just ro -> validateMove (ro ^. currentGame) m
         -- 1st check if the move belongs to the 2nd player
         maybe2ndPlayer = case HM.lookup ix (u ^. idAccess2nd) of          
-                    Nothing -> eitherG ix       -- If not, then perhaps to the 1st one
-                    Just rIx -> eitherG rIx     -- If yes, then look up using roundID
+                    Nothing -> (eitherG ix, ix)        -- If not, then perhaps to the 1st one
+                    Just rIx -> (eitherG rIx, rIx)     -- If yes, then look up using roundID
         newUniverse = case maybe2ndPlayer of
-          Left s  -> u & errorInUniverse ?~ s
-          Right g -> u & roundsMap .~ HM.adjust (\ro -> ro & currentGame .~ g) ix (u ^. roundsMap)
+          (Left s, _)  -> u & errorInUniverse ?~ s
+          (Right g, i) -> u & roundsMap .~ HM.adjust (\ro -> ro & currentGame .~ g
+                                                                & result . _1 +~ fst (newResult g)     -- game result has to propagate 
+                                                                & result . _2 +~ snd (newResult g))    -- to round level
+                                                    i (u ^. roundsMap)
+            where
+                newResult ga | ga ^. gameResult > 0 = (ga ^. gameResult, 0)
+                             | otherwise            = (0, ga ^. gameResult)
+
+getTheGame :: Integer -> Universe -> Maybe Round
+getTheGame ix u = case HM.lookup ix (u ^. idAccess2nd) of   -- check if ix exists as 2nd player's id
+                    Nothing -> maybeG ix                    -- If not, then perhaps it's the 1st one
+                    Just rIx -> maybeG rIx                  -- If yes, then look up using roundID of ix
+    where                        
+        maybeG i = HM.lookup i (u ^. roundsMap)

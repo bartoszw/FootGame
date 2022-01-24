@@ -20,15 +20,15 @@ import Server
 import Events
 
 
-theSize :: Int
-theSize = 8
+--theSize :: Int
+--theSize = 8
 
-window :: World -> Display
-window w = InWindow "Foot" (w ^. width, w ^. height) (w ^. offset, w ^. offset)
+--window :: World -> Display
+--window w = InWindow "Foot" (w ^. width, w ^. height) (w ^. offset, w ^. offset)
      
 
-background :: Color
-background = black
+--background :: Color
+--background = black
 
 main :: IO ()
 --main = display window background $ drawInversion factor (currentPosition world) (HM.difference (initFieldWithFrames theSize theSize) (grid world))
@@ -39,17 +39,17 @@ main = launchWebServer
 
 --main = (print . fst . unzip . HM.toList . initField 6) 6
 
-displayWindow :: IO ()
-displayWindow = display (window w) background $ drawWorld w
-    where
-        w = initWorld theSize
+--displayWindow :: IO ()
+--displayWindow = display (window w) background $ drawWorld w
+--    where
+--        w = initWorld theSize
 
 
-playGame :: IO ()
-playGame = play (window w) background 0 w drawWorld handleEvent iterateWorld
-    where
-        iterateWorld _ w = w
-        w = initWorld theSize
+--playGame :: IO ()
+--playGame = play (window w) background 0 w drawWorld handleEvent iterateWorld
+--    where
+--        iterateWorld _ w = w
+--        w = initWorld theSize
 
 launchWebServer :: IO ()
 launchWebServer = do

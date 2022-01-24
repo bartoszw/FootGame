@@ -19,12 +19,20 @@ module Draw
     , height
     , offset
     , monitor
+    , serverUrl
+    , serverPort
+    , ticks
+    , overNewGameButton
     ) where
 
+import           GHC.Generics
 import qualified Data.HashMap as HM
 import          Control.Lens
-import Graphics.Gloss
-import Field
+import qualified Data.Text as T
+import          Graphics.Gloss
+import           Data.Aeson
+--import           Data.Aeson.Types
+import          Field
 
 data World = World {
              _currentRound :: Round,
@@ -32,19 +40,27 @@ data World = World {
              _height :: Int, 
              _offset :: Int,
              _factor :: Float,
-             _monitor :: String
-} deriving Show
+             _monitor :: String,
+             _ticks :: Int, -- TODO: for monitoring only
+             _serverUrl :: T.Text,
+             _serverPort :: Int,
+             _overNewGameButton :: Bool
+} deriving (Show, Generic, ToJSON, FromJSON)
 
 makeLenses 'World
 
 initWorld :: Int -> World
 initWorld s = World {
-            _currentRound = initRound' "" (NGames 1),
-            _width = 400,
-            _height = 400,
-            _offset = 100,
-            _factor = 400 / (fromIntegral s + 2),
-            _monitor = "?"
+            _currentRound       = initRound' "" (NGames 1),
+            _width              = 400,
+            _height             = 600,
+            _offset             = 100,
+            _factor             = 400 / (fromIntegral s + 2),
+            _monitor            = "?",
+            _ticks              = 0,
+            _serverUrl          = "localhost",
+            _serverPort         = 8080,
+            _overNewGameButton  = False
 }
 
 data Window = Window 
@@ -64,78 +80,131 @@ drawSection factor s@((x,y),(x',y')) = Line [(nx,ny),(nx',ny')]
 --drawInversion factor loc field = pictures $ map (sectionColor . drawSection factor . fst) (HM.toList field)
 --                                          ++ drawCurrentPosition loc factor
 
-drawGrid :: World -> [Picture]
-drawGrid w = map (sectionColor . drawSection (w ^. factor) . fst) (HM.toList $ HM.difference (initFieldWithFrames s s) g)
-    where 
-        g = w ^. currentRound . currentGame . grid 
-        s = w ^. currentRound . currentGame . sizeOfGame 
 
-sectionColor :: Picture -> Picture
-sectionColor = color white
+colorSection :: Picture -> Picture
+colorSection = color white
+colorCurPosition = color yellow
+colorNewPosition = color yellow
+colorTicks = color chartreuse
+colorMonitor = color green
+colorResult = color orange
+colorTheEnd = color (light red)
+colorGameFinished = color (light $ light red)
+colorRoundType = color orange
 
-drawCurrentPosition :: World -> [Picture]
-drawCurrentPosition w = map (color yellow)  [circle (0.15 * f), circle 1]
+startNewGameButton :: IO Picture
+startNewGameButton = loadBMP "./assets/images/button_start-new-game.bmp"
+startNewGameButton2 :: IO Picture
+startNewGameButton2 = loadBMP "./assets/images/button_start-new-game2.bmp"
+
+
+
+scaleP1 :: Player -> Float
+scaleP1 Player1 = 0.18          -- I'm Player1 -> bigger font
+scaleP1 Player2 = 0.12
+scaleP2 Player1 = 0.12
+scaleP2 Player2 = 0.18          -- I'm Player2 -> bigger font
+colorP1 Player1 = yellow        -- Player1 onTurn is yellow
+colorP1 Player2 = greyN 0.7
+colorP2 Player2 = yellow        -- Player2 onTurn is yellow
+colorP2 Player1 = greyN 0.7
+
+pname :: Maybe String -> String
+pname p = case p of
+            Just n -> n
+            _      -> "Annonymous"
+
+drawWorld :: World -> IO Picture 
+drawWorld w = drawButtonNewGame >>=
+                \p -> return $ pictures (p 
+                                        : drawRoundType
+                                        : drawGameFinished
+                                        : drawTheEnd
+                                        : drawResult
+                                        : drawMonitor
+                                        : drawTicks
+                                        : drawPlayer1
+                                        : drawPlayer2
+                                        : drawCurrentPosition
+                                        ++ drawGrid
+                                        ++ drawNewPosition)
+
     where
-        f = w ^. factor
-        (x,y) = w ^. currentRound . currentGame . currentPosition
+        drawGrid :: [Picture]
+        drawGrid = map (colorSection . drawSection (w ^. factor) . fst) (HM.toList $ HM.difference (initFieldWithFrames s s) g)
 
-drawNewPosition :: World -> [Picture]
-drawNewPosition w = map (color yellow) [translate (f*fromIntegral x) (f*fromIntegral y) $ circle (0.2 *f)
+        game = w ^. currentRound . currentGame
+        g = game ^. grid 
+        s = game ^. sizeOfGame 
+
+        drawCurrentPosition :: [Picture]
+        drawCurrentPosition = map colorCurPosition [circle (0.15 * f), circle 1]
+
+        f = w ^. factor
+        (x,y) = game ^. currentPosition
+
+        drawNewPosition :: [Picture]
+        drawNewPosition = map colorNewPosition [translate (f*fromIntegral xc) (f*fromIntegral yc) $ circle (0.2 *f)
                                        ,line section
                                        ] 
-    where
-        f = w ^. factor
-        (x,y) = w ^. currentRound . currentGame . newPosition 
-        (xc,yc) = w ^. currentRound . currentGame . currentPosition
-        section = [(fromIntegral xc * f, fromIntegral yc * f),(fromIntegral x * f, fromIntegral y *f)]
+        (xc,yc) = game ^. newPosition 
+        section = [(fromIntegral x * f, fromIntegral y * f),(fromIntegral xc * f, fromIntegral yc *f)]
 
-drawMonitor :: World -> Picture 
-drawMonitor w = color green $ scale 0.2 0.2 $ translate f f $ text $ w ^. monitor
-    where
-        f = w ^. factor
+        me = game ^. iAm
+        onTurn = game ^. currentPlayer
+        t = fromIntegral (game ^. sizeOfGame) / 2 + 0.5
+        drawPlayer1 = color (colorP1 onTurn) $ translate (-f * t) (-f * t) 
+                                            $ scale (scaleP1 me) (scaleP1 me) 
+                                            $ text (pname $ w ^. currentRound . player1)
+        drawPlayer2 = color (colorP2 onTurn) $ translate (-f * t) (f * t) 
+                                            $ scale (scaleP2 me) (scaleP2 me) 
+                                            $ text (pname $ w ^. currentRound . player2)
 
-drawResult :: World -> Picture
-drawResult w = color orange $ translate (f * 3 * t / 4) (f * t) $ scale 0.15 0.15 $ text prettyResult
-    where
-        f = w ^. factor
-        t = fromIntegral (w ^. currentRound . currentGame . sizeOfGame) / 2 + 0.5
+        drawTicks :: Picture 
+        drawTicks = colorTicks $ translateNx 0.5 $ textMedium (show $ w ^. ticks)
+
+        drawMonitor :: Picture 
+        drawMonitor = colorMonitor $ translateEx (-1.1) $ textSmall $ w ^. monitor
+
+        drawResult :: Picture
+        drawResult = colorResult $ translateNx 0.75 $ textMedium prettyResult
         (a,b) = w ^. currentRound . result
         prettyResult = show a ++ ":" ++ show b
 
-drawRoundType :: World -> Picture
-drawRoundType w = color orange $ translate (f * t / 2) (-f * t) $ scale 0.15 0.15 $ text prettyRound
-    where
-        f = w ^. factor
-        t = fromIntegral (w ^. currentRound . currentGame . sizeOfGame) / 2 + 0.5
+        drawTheEnd :: Picture 
+        drawTheEnd  | w ^. currentRound . player2 == Nothing
+                = colorTheEnd  $ translateEx 0 $ textBig "Waiting for opponent"
+                    | isLastGameOfRound (w ^. currentRound)
+                = colorTheEnd $ translatexx (-0.5) (-0.1) $ textBig "The End"
+                    | otherwise 
+                = Blank
+
+        drawGameFinished :: Picture 
+        drawGameFinished    | w ^. currentRound . currentGame . gameResult /= 0
+                    = colorGameFinished $ translatexx (-0.8) 0.1 $ textBig "Game Finished"
+                            | otherwise 
+                    = Blank
+
+        drawButtonNewGame :: IO Picture
+        drawButtonNewGame  | not (isLastGameOfRound (w ^. currentRound))
+                            && w ^. currentRound . currentGame . gameResult /= 0
+                    =   (if w ^. overNewGameButton
+                        then startNewGameButton2
+                        else startNewGameButton) <&> translatexx 0 (-1.3)
+                            | otherwise
+                    = return Blank
+
+        drawRoundType :: Picture
+        drawRoundType = colorRoundType  $ translateSx 0.5 $ textMedium prettyRound
         prettyRound = show $ w ^. currentRound . roundType  
 
-drawPlayers :: World -> [Picture]
-drawPlayers w = {-map (color (greyN 0.7)) -}[drawP1,drawP2]
-    where
-        f = w ^. factor
-        game = w ^. currentRound . currentGame
-        scaleP1 Player1 = 0.18
-        scaleP1 Player2 = 0.12
-        scaleP2 Player1 = 0.12
-        scaleP2 Player2 = 0.18
-        colorP1 Player1 = yellow 
-        colorP1 Player2 = greyN 0.7
-        colorP2 Player2 = yellow 
-        colorP2 Player1 = greyN 0.7
-        me = game ^. iAm
-        onTurn = game ^. currentPlayer
-        t = fromIntegral (w ^. currentRound . currentGame . sizeOfGame) / 2 + 0.5
-        drawP1 = color (colorP1 onTurn) $ translate (-f * t) (-f * t) $ scale (scaleP1 me) (scaleP1 me) $ text (pname $ w ^. currentRound . player1)
-        drawP2 = color (colorP2 onTurn) $ translate (-f * t) (f * t) $ scale (scaleP2 me) (scaleP2 me) $ text (pname $ w ^. currentRound . player2)
-        pname p = case p of
-                Just n -> n
-                _      -> "Annonymous"
+        translateES = translate (-f * t) (-f * t) 
+        translateEN = translate (-f * t) (f * t) 
+        translateNx x = translate (f * t * x) (f * t)
+        translateSx x = translate (f * t * x) (-f * t)
+        translateEx y = translate (-f * t) (f * t * y)
+        translatexx x y =  translate (f * t * x) (f * t * y)
 
-drawWorld :: World -> Picture 
-drawWorld w = pictures $ drawRoundType w 
-                        : drawResult w 
-                        : drawMonitor w 
-                        : drawPlayers w 
-                        ++ drawCurrentPosition w 
-                        ++ drawGrid w 
-                        ++ drawNewPosition w
+        textBig = scale 0.3 0.3 . text
+        textMedium = scale 0.15 0.15 . text
+        textSmall = scale 0.1 0.1 . text

@@ -38,6 +38,12 @@ module Field
     , numberOfCurrentGame
     , iAm
     , currentPlayer
+    , moveToCont
+    , orderSection
+    , isEndOfMove
+    , goals
+    , gameResult
+    , isLastGameOfRound
     ) where
 
 import           GHC.Generics
@@ -116,6 +122,7 @@ data Game = Game {
                 _grid :: Grid,
                 _currentPosition :: Location,
                 _newPosition :: Location,
+                _moveToCont :: [Section],
                 _currentPlayer :: Player,
                 _iAm :: Player,
                 _goals :: Goals,
@@ -152,7 +159,7 @@ initRound' name t = Round {
                         _player1 = Just name,
                         _player2 = Nothing,
                         _result = (0,0),
-                        _numberOfCurrentGame = 0,
+                        _numberOfCurrentGame = 1,
                         _roundType = t,
                         _roundID = 0
                         }
@@ -174,6 +181,7 @@ initGame s = Game {
                 _grid = initField s s,
                 _currentPosition = (0,0),
                 _newPosition = (0,0),
+                _moveToCont = [],
                 _currentPlayer = Player1,
                 _iAm = Player1,
                 _goals = initGoals s,
@@ -191,6 +199,12 @@ initField len wid = buildField limits l w
                             && (x /= x' || abs x < w) -- to exclude sides of the field
                             && (y /= y' || abs y < l) -- to exclude bottom and top ends of the field
 
+-- to keep sections in order, they are sorted by x firstly then by y
+orderSection :: Section -> Section
+orderSection s@((x,y),(x',y'))  | x > x'            = ((x',y'),(x,y))
+                                | x == x' && y > y' = ((x',y'),(x,y))
+                                | otherwise         = s
+
 
 buildField :: (Location -> Location -> Bool) -> FieldLength -> FieldWidth -> Grid
 buildField limits l w = HM.fromList $ zip allSections (repeat ())
@@ -200,11 +214,6 @@ buildField limits l w = HM.fromList $ zip allSections (repeat ())
         -- it is sufficient to take following 4 sections of each location to cover whole field: \|/_
         locationSections :: Location -> [Section]
         locationSections (x,y) = [((x,y),end) | end <- filter (limits (x,y)) [(x-1,y+1),(x,y+1),(x+1,y+1),(x+1,y)]]
-        -- to keep sections in order, they are sorted by x firstly then by y
-        ordSection :: Section -> Section
-        ordSection s@((x,y),(x',y')) | x > x'            = ((x',y'),(x,y))
-                                     | x == x' && y > y' = ((x',y'),(x,y))
-                                     | otherwise         = s
         topGoal :: [Section]                                     
         topGoal = [((-1,l),(0,l)),
                    ((0,l),(1,l)),
@@ -218,7 +227,7 @@ buildField limits l w = HM.fromList $ zip allSections (repeat ())
                     ((0,-l),(1,-l)),
                     ((0,-l-1),(1,-l))]
         allSections :: [Section]
-        allSections = map ordSection $ concatMap locationSections allLocations ++ topGoal ++ bottomGoal
+        allSections = map orderSection $ concatMap locationSections allLocations ++ topGoal ++ bottomGoal
 
 initFieldWithFrames :: FieldLength -> FieldWidth -> Grid
 initFieldWithFrames len wid = buildField limits l w
@@ -254,21 +263,35 @@ validateMove g = foldl validateSection (Right g)
     where
         validateSection :: Either MyError Game -> Section -> Either MyError Game
         validateSection (Left e) _ = Left e
-        validateSection (Right g) s@(from,to) | g ^. gameResult /= 0 =
+                                               -- gameResult /= 0 => this game has been finished. Nothing to validate
+        validateSection (Right g) s@(a,b) | g ^. gameResult /= 0 =
                                                         Right g 
-                                              | from /= g ^. currentPosition = 
+                                            -- next section starts not in the place where it should have started => illegal move
+                                          | from /= g ^. currentPosition &&
+                                            to   /= g ^. currentPosition= 
                                                         Left $ IncorrectSection ("Incorrect section " ++ show s ++ 
-                                                              " at current position" ++ show (g ^. currentPosition))
-                                              | HM.lookup s (g ^. grid) == Nothing  = 
+                                                                " at current position" ++ show (g ^. currentPosition))
+                                            -- illegal move
+                                          | HM.lookup s (g ^. grid) == Nothing  = 
                                                         Left $ BusySection ("Section already busy " ++ show s)
-                                              | otherwise =
-                                                        Right g {_grid = HM.delete s (g ^. grid)
-                                                                ,_currentPosition = to
-                                                                ,_currentPlayer = newPlayer to
-                                                                ,_newPosition = to
-                                                                ,_gameResult = (g ^. goals) A.! (to,g ^. currentPlayer)}
-        newPlayer to | isPosEndOfMove to g = playerSwap $ g ^. currentPlayer
-                     | otherwise           = g ^. currentPlayer
+                                          | otherwise = Right $ g & grid            .~ HM.delete s (g ^. grid)
+                                                                  & currentPosition .~ to
+                                                                  & currentPlayer   .~ newPlayer
+                                                                  & newPosition     .~ to -- this line is possibly superflouous
+                                                                  & gameResult      .~ (g ^. goals) A.! (to,g ^. currentPlayer)
+                                                                  & moveToCont      .~ newMoveToCont
+            where
+                newPlayer   | isPosEndOfMove to g = playerSwap $ g ^. currentPlayer
+                            | otherwise           = g ^. currentPlayer
+                                -- moveToCont gets reseted during validation of 1st section
+                newMoveToCont   | isPosStartOfMove g  = [s]
+                                | otherwise           = g ^. moveToCont ++ [s]
+                -- From and to have to be calculated as section is sorted by its ends, 
+                -- so the first end isn't necessarily the "from"
+                from    | a == g ^. currentPosition = a
+                        | otherwise                 = b
+                to      | a == g ^. currentPosition = b
+                        | otherwise                 = a
                                                                                   
 nextPlayer :: Game -> Game
 nextPlayer g = g & currentPlayer .~ playerSwap (g ^. currentPlayer)
@@ -277,5 +300,24 @@ allSections :: Location -> [Section]
 allSections (x,y) = [((a,b),(x,y)) | a <- [x-1..x], b <- [y-1..y+1], a /= x || b == y-1]
                  ++ [((x,y),(a,b)) | a <- [x..x+1], b <- [y-1..y+1], a /= x || b == y+1]
 
+-- | Veryfies if the given location will be the end of the move.
+--   Veryfication has to be done *before* the move uptades the game state.    
 isPosEndOfMove :: Location -> Game -> Bool
-isPosEndOfMove p gm = length (filter (`HM.member` (gm ^. grid)) (allSections p)) == 8
+isPosEndOfMove p gm = length (filter (`HM.member` (gm ^. grid)) (allSections p)) == 8 ||
+                      (gm ^. goals) A.! (p,gm ^. currentPlayer) /= 0
+
+-- | First section in the move has a little different treatment.
+--   This helper funcion allows to recognize such a section.
+isPosStartOfMove :: Game -> Bool
+isPosStartOfMove gm = length (filter (`HM.member` (gm ^. grid)) (allSections $ gm ^. currentPosition)) == 7
+
+-- | Veryfies if the current stat of the game points that player finished his move.
+--   To be used on client side to decide if complete move can be now POSTed to the server.
+isEndOfMove :: Game -> Bool
+isEndOfMove g = length (filter (`HM.member` (g ^. grid)) (allSections $ g ^. currentPosition)) == 7 ||
+                       (g ^. goals) A.! (g ^. currentPosition, g ^. currentPlayer) /= 0
+
+isLastGameOfRound :: Round -> Bool 
+isLastGameOfRound r = case r ^. roundType of  
+                    NGames n  -> r ^. numberOfCurrentGame >= n && r ^. currentGame . gameResult /= 0
+                    BestOfN n -> fromIntegral (uncurry  (+) (r ^. result)) > fromIntegral n / 2
