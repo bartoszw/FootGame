@@ -20,6 +20,7 @@ module Management
     , runTheGame
     , errorInUniverse
     , getTheGame
+    , startNewGame
     ) where
 
 import          GHC.Generics
@@ -140,3 +141,25 @@ getTheGame ix u = case HM.lookup ix (u ^. idAccess2nd) of   -- check if ix exist
                     Just rIx -> maybeG rIx                  -- If yes, then look up using roundID of ix
     where                        
         maybeG i = HM.lookup i (u ^. roundsMap)
+
+-- | New game starts after finishing previous one within the same round
+startNewGame :: Universe -> Integer -> Universe
+startNewGame u ix = newUniverse
+    where
+        -- check if RoundId exists
+        eitherG i = case HM.lookup i (u ^. roundsMap) of          
+                    Nothing -> Left $ WrongID "fatal error: incorrect game ID. Impossible to identify the game on server side."
+                    Just ro -> Right ro 
+        -- 1st check if the move belongs to the 2nd player
+        maybe2ndPlayer = case HM.lookup ix (u ^. idAccess2nd) of          
+                    Nothing -> (eitherG ix, ix)        -- If not, then perhaps to the 1st one
+                    Just rIx -> (eitherG rIx, rIx)     -- If yes, then look up using roundID
+        newUniverse = case maybe2ndPlayer of
+          (Left s, _)   -> u & errorInUniverse ?~ s
+          (Right ro, i) -> u & roundsMap .~ HM.adjust (\ro -> ro & numberOfCurrentGame +~ 1
+                                                                 & currentGame .~ newGame)
+                                                    i (u ^. roundsMap)
+            where
+                -- new game - swapped players 
+                newGame | even (ro ^. numberOfCurrentGame) = initGame 8 & currentPlayer .~ Player1
+                        | otherwise                        = initGame 8 & currentPlayer .~ Player2

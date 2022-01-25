@@ -29,10 +29,10 @@ import ClientServerTools
 -- | Being onTurn -> just tick
 --   otherwise    -> get from server side current state - once every 5 ticks
 iterateWorld :: Float -> World -> IO World 
-iterateWorld freq w | me /= onTurn && w ^. ticks `mod` 5 == 0 = getTheMove w
+iterateWorld freq w | me /= onTurn && w ^. ticks `mod` 2 == 0 = getTheMove w
                      -- waiting for 2nd player
                     | w ^. currentRound . player2 == Nothing
-                        && w ^. ticks `mod` 5 == 0            = getTheMove w
+                        && w ^. ticks `mod` 2 == 0            = getTheMove w
                     | otherwise                               = return $ w & ticks +~ 1
     where
         game = w ^. currentRound . currentGame

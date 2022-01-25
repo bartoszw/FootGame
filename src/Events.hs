@@ -34,11 +34,19 @@ btNewGameY = 69
 btNewGameTy = -1.3
 btNewGameTx = 0
 
+overBt w x y = x >= f * t * btNewGameTx - btNewGameX / 2 
+              && x <= f * t * btNewGameTx + btNewGameX / 2 
+              && y >= f * t * btNewGameTy - btNewGameY / 2 
+              && y <= f * t * btNewGameTy + btNewGameY / 2 
+  where              
+        f = w ^. factor
+        t = fromIntegral (w ^. currentRound . currentGame . sizeOfGame) / 2 + 0.5
+
 -- | If case mouse points to an available section, the section is displayed as a hint
 handleEvent :: Event -> World -> IO World 
 handleEvent (EventMotion (x,y)) w 
             | game ^. gameResult /= 0
-                        = return $ w & overNewGameButton .~ overBt
+                        = return $ w & overNewGameButton .~ overBt w x y
             | itsMe     = return $ w & monitor .~ show x' ++ "," ++ show y' ++ ":" ++ show curP
                                      & currentRound . currentGame .newPosition .~ newP
             | otherwise = return w
@@ -47,10 +55,6 @@ handleEvent (EventMotion (x,y)) w
         t = fromIntegral (game ^. sizeOfGame) / 2 + 0.5
         x' = round $ x / w ^. factor
         y' = round $ y / w ^. factor
-        overBt = x >= f * t * btNewGameTx - btNewGameX / 2 
-              && x <= f * t * btNewGameTx + btNewGameX / 2 
-              && y >= f * t * btNewGameTy - btNewGameY / 2 
-              && y <= f * t * btNewGameTy + btNewGameY / 2 
         game = w ^. currentRound . currentGame
         curP = game ^. currentPosition
         g = game ^. grid
@@ -62,6 +66,9 @@ handleEvent (EventMotion (x,y)) w
 -- | Left mouse button click while mouse pointing to an available section, the section is validated and done.
 --   In case move is finished it is so displayed.
 handleEvent (EventKey (MouseButton LeftButton) Up _ (x,y) ) w 
+            | game ^. gameResult /= 0 &&
+              overBt w x y &&
+              itsMe         = startNewGame w
             | newP == curP  = return w -- illegal move attempt
             | w ^. currentRound . player2 == Nothing 
                             = return $ w & monitor .~ "Waiting for 2nd player."
@@ -95,7 +102,7 @@ handleEvent (EventKey (MouseButton LeftButton) Up _ (x,y) ) w
         -- It's important to order the secion!
         newG = validateMove game [orderSection section] 
         newResult ga | ga ^. gameResult > 0 = (ga ^. gameResult, 0)
-                     | otherwise            = (0, ga ^. gameResult)
+                     | otherwise            = (0, ga ^. gameResult)        
 
 handleEvent _ w = return w
 
@@ -114,3 +121,15 @@ postValidateMove w m = do
                     >> print (rb ^. responseBody)
                     >> (return $ w & monitor .~ show err)  -- TODO dev only print
 
+
+startNewGame :: World -> IO World
+startNewGame w = do
+      let url = "http://" ++ unpack (w ^. serverUrl) ++ ":" ++ show (w ^. serverPort) ++ "/newgame"
+      let opts = defaults & param "round" .~ [encode2Text $ w ^. currentRound . roundID]
+      print url                 -- TODO dev only
+      rb <- postWith opts url BL.empty
+      case asJSON rb of
+        Right rr -> return $ w & monitor .~ rr ^. responseBody
+        Left err -> print (show err) 
+                    >> print (rb ^. responseBody)
+                    >> (return $ w & monitor .~ show err)  -- TODO dev only print

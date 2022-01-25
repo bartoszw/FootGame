@@ -26,6 +26,7 @@ import          Management
 import          IterateWorld
 import          Events
 import qualified Draw
+import          ClientServerTools
 
 
 data AppModel = AppModel {
@@ -256,9 +257,6 @@ main = do
 
 
 -- | ===================================   ==================================================================
-theSize :: Int
-theSize = 8
-
 window :: Draw.World -> G.Display
 window w = G.InWindow "Foot" (w ^. Draw.width, w ^. Draw.height) (w ^. Draw.offset, w ^. Draw.offset)
      

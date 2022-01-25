@@ -40,6 +40,7 @@ app =
         get "/" getHome
         post "join" postJoin
         post "move" postValidateMove
+        post "newgame" postStartNewGame
 {-
         get "newpasswd" getHome
         get "hello" $ html helloHTML
@@ -160,6 +161,16 @@ postValidateMove = do
                       Just err -> json $ show err ++ msg
               _ -> text "missing game reference or move to proceed"
 
-              
-
-            
+postStartNewGame :: ActionCtxT ctx (WebStateM () MySession MyAppState) a
+postStartNewGame = do                          
+            (AppState ref) <- getState 
+            u <- liftIO $ readIORef ref
+            iround <- param "round"
+            case iround of
+              Just ir -> do
+                    let newU = startNewGame u ir
+                    liftIO $ writeIORef ref newU
+                    case newU ^. errorInUniverse of
+                      Nothing  -> json ("OK " :: String)
+                      Just err -> json $ show err
+              _ -> text "missing game reference to start new game"

@@ -18,3 +18,7 @@ import           Data.Aeson
 
 encode2Text :: ToJSON a => a -> Text
 encode2Text = decodeUtf8 . BL.toStrict . encode
+
+-- | Size of the game.
+theSize :: Int
+theSize = 8

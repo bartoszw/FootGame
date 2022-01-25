@@ -186,8 +186,9 @@ drawWorld w = drawButtonNewGame >>=
                     = Blank
 
         drawButtonNewGame :: IO Picture
-        drawButtonNewGame  | not (isLastGameOfRound (w ^. currentRound))
-                            && w ^. currentRound . currentGame . gameResult /= 0
+        drawButtonNewGame  | not (isLastGameOfRound (w ^. currentRound))            -- when this is not the last game of round
+                            && w ^. currentRound . currentGame . gameResult /= 0    -- when the game finished
+                            && me == onTurn                                         -- when I'm on move (just one player gets the button)
                     =   (if w ^. overNewGameButton
                         then startNewGameButton2
                         else startNewGameButton) <&> translatexx 0 (-1.3)

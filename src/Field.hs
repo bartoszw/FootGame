@@ -44,10 +44,12 @@ module Field
     , goals
     , gameResult
     , isLastGameOfRound
+    , playerSwap
     ) where
 
 import           GHC.Generics
 import          Control.Lens
+import          Control.Arrow
 import qualified Data.HashMap as HM
 import qualified Data.Array as A
 import           Data.Hashable
@@ -104,7 +106,7 @@ instance (A.Ix ix, FromJSON ix, FromJSON v) => FromJSON (A.Array ix v) where
 instance (ToJSON k, ToJSON v) => ToJSON (HM.Map k v) where
     toJSON = toJSON . HM.toList
 instance (Hashable k, Ord k, FromJSON k, FromJSON v) => FromJSON (HM.Map k v) where
-    parseJSON xs = parseJSON xs >>= return . HM.fromList
+    parseJSON xs = parseJSON xs <&> HM.fromList
 
 -- | Scenario of a round
 data RoundType =  NGames Int
@@ -214,18 +216,21 @@ buildField limits l w = HM.fromList $ zip allSections (repeat ())
         -- it is sufficient to take following 4 sections of each location to cover whole field: \|/_
         locationSections :: Location -> [Section]
         locationSections (x,y) = [((x,y),end) | end <- filter (limits (x,y)) [(x-1,y+1),(x,y+1),(x+1,y+1),(x+1,y)]]
+
         topGoal :: [Section]                                     
         topGoal = [((-1,l),(0,l)),
                    ((0,l),(1,l)),
                    ((0,l),(0,l+1)),
                    ((-1,l),(0,l+1)),
+                   ((0,l),(-1,l+1)),
+                   ((0,l),(1,l+1)),
                    ((0,l+1),(1,l))]
-        bottomGoal :: [Section]                                     
-        bottomGoal = [((-1,-l),(0,-l-1)),
-                    ((-1,-l),(0,-l)),
-                    ((0,-l-1),(0,-l)),
-                    ((0,-l),(1,-l)),
-                    ((0,-l-1),(1,-l))]
+
+        neg = (*(-1)) *** (*(-1))
+        neg2 = neg *** neg
+        bottomGoal :: [Section]                    
+        bottomGoal = map neg2 topGoal
+        
         allSections :: [Section]
         allSections = map orderSection $ concatMap locationSections allLocations ++ topGoal ++ bottomGoal
 
