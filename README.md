@@ -11,7 +11,7 @@ Implementation of a client consuming services provided by the server and allowin
 Based on monomer, wreq and gloss.
 
 ## Internals
-Used frameworks and components:
+Built under `stack`. Used frameworks and components:
 - lenses
 - aeson
 - wreq
